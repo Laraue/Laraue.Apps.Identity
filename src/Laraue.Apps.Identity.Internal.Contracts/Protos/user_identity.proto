@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+option csharp_namespace = "Laraue.Apps.Identity.Internal.Contracts";
+package laraue.apps.identity.internal.v1;
+
+// Service-to-service contract other Laraue apps call directly to resolve a global Laraue user
+// identity for their own local (e.g. Telegram) user. This service is the single source of truth
+// for "which global user does this Telegram account belong to" and "which services has a user
+// touched" - callers aren't expected to keep their own copy of that mapping.
+service UserIdentityService {
+  // Looks up the global user owning the given Telegram account. If none exists yet, creates a new
+  // global user, links the Telegram account to it, and records that the calling service is used by
+  // that user. If the Telegram account is already linked to a global user, that same user id is
+  // returned and the calling service is (idempotently) recorded as used by that user - a Telegram
+  // account always resolves to the same global user regardless of which service is asking.
+  rpc CreateUserIfNotExists (CreateUserIfNotExistsRequest) returns (CreateUserIfNotExistsResponse);
+}
+
+enum ServiceId {
+  SERVICE_ID_UNSPECIFIED = 0;
+  SERVICE_ID_LARAUE_BOARDS = 1;
+  SERVICE_ID_LEARN_LANGUAGE = 2;
+}
+
+message CreateUserIfNotExistsRequest {
+  int64 telegram_id = 1;
+  ServiceId service_id = 2;
+}
+
+message CreateUserIfNotExistsResponse {
+  // The global Laraue user id (GUID, string form).
+  string user_id = 1;
+}
