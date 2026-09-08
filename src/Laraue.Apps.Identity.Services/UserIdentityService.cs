@@ -9,16 +9,30 @@ using UserServiceEntity = Laraue.Apps.Identity.DataAccess.Entities.UserService;
 
 namespace Laraue.Apps.Identity.Services;
 
+/// <summary>
+/// Telegram profile fields as currently known by the calling service - see
+/// <see cref="TelegramAccount"/> for why these mirror <c>ITelegramUser</c>'s shape. All optional:
+/// not every Telegram user has a username, and a caller may not always have the full profile on
+/// hand.
+/// </summary>
+public sealed record TelegramProfile(
+    string? UserName,
+    string? FirstName,
+    string? LastName,
+    string? LanguageCode);
+
 public interface IUserIdentityService
 {
     /// <summary>
     /// Resolves the global user id for the given Telegram account, creating a new global user and
     /// linking the Telegram account to it if none exists yet. Either way, records that
-    /// <paramref name="serviceId"/> is used by the resolved user.
+    /// <paramref name="serviceId"/> is used by the resolved user, and refreshes the stored Telegram
+    /// profile fields from <paramref name="profile"/> (Telegram profiles can change between calls).
     /// </summary>
     Task<Guid> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
+        TelegramProfile profile,
         CancellationToken cancellationToken);
 }
 
@@ -27,6 +41,7 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
     public async Task<Guid> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
+        TelegramProfile profile,
         CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(serviceId))
@@ -34,7 +49,7 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
             throw new BadRequestException(nameof(serviceId), string.Format(Errors.UnknownService, serviceId));
         }
 
-        var userId = await GetOrCreateUserIdAsync(telegramId, cancellationToken);
+        var userId = await GetOrCreateUserIdAsync(telegramId, profile, cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
 
@@ -43,29 +58,36 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
 
     /// <summary>
     /// Looks up the user already linked to <paramref name="telegramId"/>, or creates a new global
-    /// user and links it if this is the first time this Telegram account has been seen.
+    /// user and links it if this is the first time this Telegram account has been seen. Either way,
+    /// writes <paramref name="profile"/> onto the <see cref="TelegramAccount"/> row.
     /// </summary>
-    private async Task<Guid> GetOrCreateUserIdAsync(long telegramId, CancellationToken cancellationToken)
+    private async Task<Guid> GetOrCreateUserIdAsync(
+        long telegramId,
+        TelegramProfile profile,
+        CancellationToken cancellationToken)
     {
-        var existingUserId = await context.TelegramAccounts
-            .Where(x => x.TelegramId == telegramId)
-            .Select(x => (Guid?)x.UserId)
-            .SingleOrDefaultAsync(cancellationToken);
+        var existingAccount = await context.TelegramAccounts
+            .SingleOrDefaultAsync(x => x.TelegramId == telegramId, cancellationToken);
 
-        if (existingUserId is { } userId)
+        if (existingAccount is not null)
         {
-            return userId;
+            ApplyProfile(existingAccount, profile);
+            await context.SaveChangesAsync(cancellationToken);
+
+            return existingAccount.UserId;
         }
 
         var newUser = new User { Id = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow };
-
-        context.Users.Add(newUser);
-        context.TelegramAccounts.Add(new TelegramAccount
+        var newAccount = new TelegramAccount
         {
             TelegramId = telegramId,
             UserId = newUser.Id,
             CreatedAt = newUser.CreatedAt,
-        });
+        };
+        ApplyProfile(newAccount, profile);
+
+        context.Users.Add(newUser);
+        context.TelegramAccounts.Add(newAccount);
 
         try
         {
@@ -77,12 +99,21 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
             // Lost a race with a concurrent call for the same Telegram account - the unique
             // TelegramId key rejected our insert. Drop our attempt and use whichever row won.
             context.Entry(newUser).State = EntityState.Detached;
+            context.Entry(newAccount).State = EntityState.Detached;
 
             return await context.TelegramAccounts
                 .Where(x => x.TelegramId == telegramId)
                 .Select(x => x.UserId)
                 .SingleAsync(cancellationToken);
         }
+    }
+
+    private static void ApplyProfile(TelegramAccount account, TelegramProfile profile)
+    {
+        account.TelegramUserName = profile.UserName;
+        account.TelegramFirstName = profile.FirstName;
+        account.TelegramLastName = profile.LastName;
+        account.TelegramLanguageCode = profile.LanguageCode;
     }
 
     private async Task EnsureUserServiceRecordedAsync(

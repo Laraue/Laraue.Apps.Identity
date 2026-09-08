@@ -1,5 +1,8 @@
+using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Laraue.Apps.Identity.IntegrationTests;
 
@@ -61,5 +64,39 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
         });
 
         Assert.Equal(boards.UserId, learnLanguage.UserId);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExists_ShouldRefreshTelegramProfile_WhenCalledAgainWithChangedFields()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient();
+
+        await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 4,
+            ServiceId = ServiceId.LaraueBoards,
+            TelegramUsername = "old_username",
+            TelegramFirstName = "OldFirst",
+        });
+
+        await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 4,
+            ServiceId = ServiceId.LaraueBoards,
+            TelegramUsername = "new_username",
+            TelegramFirstName = "NewFirst",
+            TelegramLastName = "NewLast",
+            TelegramLanguageCode = "en",
+        });
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+        var account = await db.TelegramAccounts.SingleAsync(x => x.TelegramId == 4);
+
+        Assert.Equal("new_username", account.TelegramUserName);
+        Assert.Equal("NewFirst", account.TelegramFirstName);
+        Assert.Equal("NewLast", account.TelegramLastName);
+        Assert.Equal("en", account.TelegramLanguageCode);
     }
 }

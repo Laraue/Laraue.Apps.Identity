@@ -25,6 +25,15 @@ enum ServiceId {
 message CreateUserIfNotExistsRequest {
   int64 telegram_id = 1;
   ServiceId service_id = 2;
+
+  // Telegram profile fields as currently known by the calling service. Optional - not every
+  // Telegram user has a username, and a caller may not always have the full profile on hand.
+  // Stored on the TelegramAccount and refreshed on every call (Telegram profiles can change), not
+  // just on first creation.
+  optional string telegram_username = 3;
+  optional string telegram_first_name = 4;
+  optional string telegram_last_name = 5;
+  optional string telegram_language_code = 6;
 }
 
 message CreateUserIfNotExistsResponse {

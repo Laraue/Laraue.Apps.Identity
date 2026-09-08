@@ -10,11 +10,11 @@ public class UserService
 {
     public Guid UserId { get; set; }
 
-    public User User { get; set; } = null!;
+    public User? User { get; set; }
 
     public ServiceId ServiceId { get; set; }
 
-    public Service Service { get; set; } = null!;
+    public Service? Service { get; set; }
 
     public DateTimeOffset FirstSeenAt { get; set; }
 }

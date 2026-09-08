@@ -40,7 +40,15 @@ and get back the global user id, creating the global user on first sight of that
   `DatabaseContext`) is the actual lookup key: it's globally unique per Telegram account, not per
   calling service, so the same Telegram account always resolves to the same global `User`
   regardless of which service asks (`Laraue Boards` and `Learn Language` calling with the same
-  `TelegramId` get the same global user id back).
+  `TelegramId` get the same global user id back). Also carries the Telegram profile fields
+  (`TelegramUserName`/`TelegramFirstName`/`TelegramLastName`/`TelegramLanguageCode`) - these
+  intentionally mirror `Laraue.Telegram.NET.Authentication.Models.ITelegramUser`'s field
+  names/lengths (see that package's `ITelegramUser.cs`) for consistency with how the other Laraue
+  apps model a Telegram user, even though this entity doesn't implement that interface itself (its
+  "system id" concept is the separate `UserId` FK, not its own PK, so the interface's `Id`/`TKey`
+  shape doesn't map cleanly onto it). All optional, and refreshed on *every*
+  `CreateUserIfNotExists` call, not just when the row is first created - Telegram profiles change
+  (username, display name) and this is meant to stay current, not just capture a first snapshot.
 - `Service` - a consuming app (`LaraueBoards`, `LearnLanguage`), identified by its own `ServiceId`
   enum. This is a deliberately independent registry from `Laraue.Apps.Billing`'s own `ServiceId`
   enum - the two services aren't schema-coupled, even though the numeric values happen to start the

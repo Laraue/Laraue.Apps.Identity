@@ -29,6 +29,7 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
             userId = await userIdentityService.CreateUserIfNotExistsAsync(
                 ToDomainServiceId(request.ServiceId),
                 request.TelegramId,
+                ToTelegramProfile(request),
                 context.CancellationToken);
         }
         catch (BadRequestException ex)
@@ -45,4 +46,10 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         ContractsServiceId.LearnLanguage => DomainServiceId.LearnLanguage,
         _ => throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown service '{serviceId}'.")),
     };
+
+    private static TelegramProfile ToTelegramProfile(Internal.Contracts.CreateUserIfNotExistsRequest request) => new(
+        UserName: request.HasTelegramUsername ? request.TelegramUsername : null,
+        FirstName: request.HasTelegramFirstName ? request.TelegramFirstName : null,
+        LastName: request.HasTelegramLastName ? request.TelegramLastName : null,
+        LanguageCode: request.HasTelegramLanguageCode ? request.TelegramLanguageCode : null);
 }
