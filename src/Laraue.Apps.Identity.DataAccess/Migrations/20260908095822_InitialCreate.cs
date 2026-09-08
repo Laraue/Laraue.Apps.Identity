@@ -44,6 +44,10 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                 {
                     telegram_id = table.Column<long>(type: "bigint", nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    telegram_user_name = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: true),
+                    telegram_first_name = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    telegram_last_name = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    telegram_language_code = table.Column<string>(type: "character varying(2)", maxLength: 2, nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
