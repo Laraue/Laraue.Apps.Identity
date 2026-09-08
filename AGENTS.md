@@ -124,6 +124,32 @@ targets, and it doesn't necessarily point at the test database (dev `identity` v
 `identity_tests`). Confirm which database a destructive command targets before running it, and ask
 first if there's any ambiguity.
 
+## Deploy
+
+`.github/workflows/dotnet.yml`'s `deploy` job packs `InternalApiHost`'s publish output, scp's it to
+`/home/laraue/identity-internal-api-host` on the deploy server, then runs `docker compose build
+identityinternalapihost` / `docker compose up -d --force-recreate identityinternalapihost` there -
+same shape as Billing/Boards' `deploy` jobs (see those repos' `dotnet.yml` if you need the fuller
+pattern), runs only on push to `main`, one matrix entry.
+
+This was the **first** deploy pipeline for an `InternalApiHost`-shaped (gRPC-only) service in the
+Laraue ecosystem - Billing's own `InternalApiHost` has no deploy job anywhere, so there was no
+existing convention to copy; this one was designed from scratch, following the `WebApiHost` deploy
+shape as closely as it still made sense to. If you add a deploy job for another gRPC-only host
+later, this is the pattern to copy instead of Billing's (nonexistent) one.
+
+**Prerequisites this repo's CI does *not* set up itself** (all on the GitHub repo, done once, by a
+human, not by this workflow):
+- A `docker-compose.yml` service block named `identityinternalapihost` on the deploy server itself,
+  with a build context at `/home/laraue/identity-internal-api-host` (where CI uploads the published
+  binaries) - this repo doesn't own or contain that file.
+- A GitHub Environment named `internalapi-production` (Settings -> Environments) - the job's
+  `environment: ${{ matrix.environment }}` targets it, same as Billing/Boards' `webapi-production`
+  etc.
+- Repo (or environment-scoped) secrets: `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PASSWORD`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. This is a separate GitHub repo from Billing/Boards, so
+  these secrets don't carry over automatically even if the values happen to be the same.
+
 ## Testing
 
 Naming convention: `{Handler}_Should{ExpectedBehavior}_When{Condition}`, matching Billing/Boards.
