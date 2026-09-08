@@ -27,7 +27,7 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         try
         {
             userId = await userIdentityService.CreateUserIfNotExistsAsync(
-                ToDomainServiceId(request.ServiceId),
+                ReadDomainServiceId(context),
                 request.TelegramId,
                 ToTelegramProfile(request),
                 context.CancellationToken);
@@ -38,6 +38,26 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         }
 
         return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
+    }
+
+    /// <summary>
+    /// The calling service is identified once per client via the
+    /// <see cref="Internal.Contracts.GrpcHeaders.ServiceIdHeaderName"/> metadata header (attached by
+    /// an interceptor on the client, not per-call) rather than a request field - see the note atop
+    /// <c>user_identity.proto</c>.
+    /// </summary>
+    private static DomainServiceId ReadDomainServiceId(ServerCallContext context)
+    {
+        var header = context.RequestHeaders.Get(Internal.Contracts.GrpcHeaders.ServiceIdHeaderName)?.Value;
+
+        if (header is null || !int.TryParse(header, out var rawServiceId))
+        {
+            throw new RpcException(new Status(
+                StatusCode.InvalidArgument,
+                $"Missing or invalid '{Internal.Contracts.GrpcHeaders.ServiceIdHeaderName}' header."));
+        }
+
+        return ToDomainServiceId((ContractsServiceId)rawServiceId);
     }
 
     private static DomainServiceId ToDomainServiceId(ContractsServiceId serviceId) => serviceId switch

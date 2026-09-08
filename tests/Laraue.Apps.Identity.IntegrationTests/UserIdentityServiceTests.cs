@@ -1,3 +1,4 @@
+using Grpc.Core;
 using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
@@ -12,12 +13,11 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     public async Task CreateUserIfNotExists_ShouldCreateNewUser_WhenTelegramIdIsUnknown()
     {
         host.CleanDatabase();
-        var client = host.CreateUserIdentityClient();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var response = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 1,
-            ServiceId = ServiceId.LaraueBoards,
         });
 
         Assert.True(Guid.TryParse(response.UserId, out var userId));
@@ -28,18 +28,16 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     public async Task CreateUserIfNotExists_ShouldReturnSameUserId_WhenCalledTwiceForSameTelegramId()
     {
         host.CleanDatabase();
-        var client = host.CreateUserIdentityClient();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var first = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 2,
-            ServiceId = ServiceId.LaraueBoards,
         });
 
         var second = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 2,
-            ServiceId = ServiceId.LaraueBoards,
         });
 
         Assert.Equal(first.UserId, second.UserId);
@@ -49,18 +47,17 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     public async Task CreateUserIfNotExists_ShouldReturnSameUserId_WhenCalledForDifferentService()
     {
         host.CleanDatabase();
-        var client = host.CreateUserIdentityClient();
+        var boardsClient = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var learnLanguageClient = host.CreateUserIdentityClient(ServiceId.LearnLanguage);
 
-        var boards = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        var boards = await boardsClient.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 3,
-            ServiceId = ServiceId.LaraueBoards,
         });
 
-        var learnLanguage = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        var learnLanguage = await learnLanguageClient.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 3,
-            ServiceId = ServiceId.LearnLanguage,
         });
 
         Assert.Equal(boards.UserId, learnLanguage.UserId);
@@ -70,12 +67,11 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     public async Task CreateUserIfNotExists_ShouldRefreshTelegramProfile_WhenCalledAgainWithChangedFields()
     {
         host.CleanDatabase();
-        var client = host.CreateUserIdentityClient();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 4,
-            ServiceId = ServiceId.LaraueBoards,
             TelegramUsername = "old_username",
             TelegramFirstName = "OldFirst",
         });
@@ -83,7 +79,6 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
         await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 4,
-            ServiceId = ServiceId.LaraueBoards,
             TelegramUsername = "new_username",
             TelegramFirstName = "NewFirst",
             TelegramLastName = "NewLast",
@@ -98,5 +93,17 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
         Assert.Equal("NewFirst", account.TelegramFirstName);
         Assert.Equal("NewLast", account.TelegramLastName);
         Assert.Equal("en", account.TelegramLanguageCode);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExists_ShouldReturnInvalidArgument_WhenServiceIdHeaderIsMissing()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClientWithoutServiceIdHeader();
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsAsync(
+            new CreateUserIfNotExistsRequest { TelegramId = 5 }).ResponseAsync);
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
     }
 }

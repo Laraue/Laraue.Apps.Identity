@@ -7,6 +7,11 @@ package laraue.apps.identity.internal.v1;
 // identity for their own local (e.g. Telegram) user. This service is the single source of truth
 // for "which global user does this Telegram account belong to" and "which services has a user
 // touched" - callers aren't expected to keep their own copy of that mapping.
+//
+// Which service is calling is identified once per client via the "x-laraue-service-id" metadata
+// header (see GrpcHeaders.ServiceIdHeaderName in this package, value = the numeric ServiceId
+// below), not repeated on every request message - a client is always the same service for the
+// lifetime of its channel, so it belongs at the connection/interceptor level, not in the payload.
 service UserIdentityService {
   // Looks up the global user owning the given Telegram account. If none exists yet, creates a new
   // global user, links the Telegram account to it, and records that the calling service is used by
@@ -24,7 +29,6 @@ enum ServiceId {
 
 message CreateUserIfNotExistsRequest {
   int64 telegram_id = 1;
-  ServiceId service_id = 2;
 
   // Telegram profile fields as currently known by the calling service. Optional - not every
   // Telegram user has a username, and a caller may not always have the full profile on hand.
