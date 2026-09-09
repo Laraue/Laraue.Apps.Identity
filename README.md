@@ -52,7 +52,11 @@ is trusted service-to-service traffic, not public-facing.
    dotnet run --project src/Laraue.Apps.Identity.InternalApiHost
    ```
    Migrations apply automatically on startup - no separate `dotnet ef database update` step.
-3. The host listens on `http://localhost:5363` by default (see `Properties/launchSettings.json`).
+3. The host listens on two ports by default (see `Kestrel:GrpcPort`/`Kestrel:HealthPort` in
+   `appsettings.json`): `http://localhost:5363` for gRPC (HTTP/2-only, cleartext) and
+   `http://localhost:5364` for `/_health`/`/_metrics` (HTTP/1.1-only). They're split because Kestrel
+   can't multiplex HTTP/1.1 and h2c on the same endpoint without TLS - see the comment in
+   `Program.cs` if you're wondering why.
 
 ## Running tests
 

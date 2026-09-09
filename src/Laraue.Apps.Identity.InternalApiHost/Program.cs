@@ -16,11 +16,14 @@ public sealed class Program
 
         const string dbConnectionStringName = "Postgre";
 
-        // Internal service-to-service traffic only (trusted network) - plain HTTP/2 (h2c) for gRPC,
-        // no TLS. Http1AndHttp2 (not Http2 alone) so /_health and /_metrics still work - those are
-        // scraped over plain HTTP/1.1, and Kestrel can serve both off the same cleartext port.
+        var grpcPort = builder.Configuration.GetValue<int?>("Kestrel:GrpcPort") ?? 5363;
+        var healthPort = builder.Configuration.GetValue<int?>("Kestrel:HealthPort") ?? 5364;
+
         builder.WebHost.ConfigureKestrel(options =>
-            options.ConfigureEndpointDefaults(listen => listen.Protocols = HttpProtocols.Http1AndHttp2));
+        {
+            options.ListenAnyIP(grpcPort, listen => listen.Protocols = HttpProtocols.Http2);
+            options.ListenAnyIP(healthPort, listen => listen.Protocols = HttpProtocols.Http1);
+        });
 
         var connection = builder.Configuration.GetConnectionString(dbConnectionStringName);
         builder.Services.AddDbContext<DatabaseContext>(opt => opt

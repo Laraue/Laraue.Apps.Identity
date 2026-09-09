@@ -90,7 +90,23 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
   Billing's `InternalApiServices`/`InternalApiHost` split.
 - `src/Laraue.Apps.Identity.InternalApiHost` - the gRPC host: `Program.cs` only (Kestrel h2c/DI/
   OpenTelemetry wiring, migrations on startup via `db.Database.MigrateAsync()`). No gRPC service
-  implementations of its own.
+  implementations of its own. Listens on **two separate ports** (`Kestrel:GrpcPort`/`:HealthPort` in
+  config, 5363/5364 by default) - one HTTP/2-only for gRPC, one HTTP/1.1-only for `/_health`/
+  `/_metrics`. This isn't a stylistic choice: Kestrel cannot multiplex HTTP/1.1 and cleartext HTTP/2
+  (h2c) on the *same* endpoint without TLS (no ALPN to pick per-connection) - a single endpoint
+  declared `HttpProtocols.Http1AndHttp2` over plaintext silently downgrades to HTTP/1.1-only, which
+  breaks every gRPC call with a client-side `HTTP_1_1_REQUIRED` error. Caught by actually running
+  the host and calling it over a real socket - `WebApplicationFactory`'s in-memory `TestServer`
+  (used by the integration tests below) bypasses Kestrel's real listen config entirely, so it never
+  exercises this and won't catch a regression here. If you ever "simplify" this back to one shared
+  `Http1AndHttp2` endpoint, you will silently reintroduce this bug - don't, even though (per Billing's
+  `Program.cs`, which this was originally copied from) it looks like it should work.
+  Health stays a plain REST `/_health` endpoint (not the gRPC Health Checking Protocol) - `/_metrics`
+  (Prometheus scraping, plain HTTP GET, no gRPC support) needs this second port regardless, so
+  there's no port saved by moving health onto the gRPC port, and REST keeps this consistent with
+  Billing/Boards' `curl`-based Docker healthchecks. (This was tried the gRPC-native way first and
+  reverted for exactly this reason - don't re-introduce it without also finding a way to drop the
+  Prometheus port.)
 - `tests/Laraue.Apps.Identity.IntegrationTests` - `InternalApiTestHost` wraps
   `WebApplicationFactory<Program>` for `InternalApiHost` and hands back a real generated
   `UserIdentityService.UserIdentityServiceClient` wired to the in-memory `TestServer` via
