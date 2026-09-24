@@ -57,10 +57,33 @@ public class InternalApiTestHost : WebApplicationFactory<Program>
         return new UserIdentityService.UserIdentityServiceClient(channel);
     }
 
-    public void CleanDatabase()
+    public InternalApiTestHostScope CreateTestScope()
     {
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        db.CleanDatabase();
+        var scope = Services.CreateScope();
+
+        return new InternalApiTestHostScope(scope);
+    }
+}
+
+/// <summary>
+/// Per-test scope, same shape as Boards' <c>WebApiTestHostScope</c>: creating one wipes the test
+/// database, so every test starts with <c>using var testScope = host.CreateTestScope();</c> and
+/// uses <see cref="Database"/> for any direct seeding/assertions.
+/// </summary>
+public class InternalApiTestHostScope : IDisposable
+{
+    private readonly IServiceScope _scope;
+    public DatabaseContext Database => _scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+
+    public InternalApiTestHostScope(IServiceScope scope)
+    {
+        _scope = scope;
+        Database.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+        Database.CleanDatabase();
+    }
+
+    public void Dispose()
+    {
+        _scope.Dispose();
     }
 }

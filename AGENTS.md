@@ -121,10 +121,12 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
   `WebApplicationFactory<Program>` for `InternalApiHost` and hands back a real generated
   `UserIdentityService.UserIdentityServiceClient` wired to the in-memory `TestServer` via
   `Grpc.Net.Client` (no real socket) - tests call the gRPC contract the same way another Laraue app
-  would, not the business-logic interface directly. `InternalApiTestHost.CleanDatabase()` /
-  `DbExtensions.CleanDatabase` wipe `UserServices`/`TelegramAccounts`/`GoogleAccounts`/`Users` (not the seeded
-  `Services` table) - call it at the start of every test since, unlike Billing's tariffs, this
-  service's tests write rows from the very first test.
+  would, not the business-logic interface directly. Same per-test pattern as Boards: every test
+  starts with `using var testScope = host.CreateTestScope();` - `InternalApiTestHostScope`'s
+  constructor calls `DbExtensions.CleanDatabase` (wipes `UserServices`/`TelegramAccounts`/
+  `GoogleAccounts`/`Users`, not the seeded `Services` table), and `testScope.Database` is the
+  (no-tracking) `DatabaseContext` for direct assertions. Test classes are marked
+  `[Collection("IntegrationTest")]` so they never run in parallel against the shared test database.
 
 ## EF Core
 

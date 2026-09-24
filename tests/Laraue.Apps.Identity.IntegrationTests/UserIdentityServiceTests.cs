@@ -1,18 +1,17 @@
 using Grpc.Core;
-using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Laraue.Apps.Identity.IntegrationTests;
 
+[Collection("IntegrationTest")]
 public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<InternalApiTestHost>
 {
     [Fact]
     public async Task CreateUserIfNotExists_ShouldCreateNewUser_WhenTelegramIdIsUnknown()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var response = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
@@ -27,7 +26,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExists_ShouldReturnSameUserId_WhenCalledTwiceForSameTelegramId()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var first = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
@@ -46,7 +45,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExists_ShouldReturnSameUserId_WhenCalledForDifferentService()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var boardsClient = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
         var learnLanguageClient = host.CreateUserIdentityClient(ServiceId.LearnLanguage);
 
@@ -66,7 +65,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExists_ShouldRefreshTelegramProfile_WhenCalledAgainWithChangedFields()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
@@ -85,9 +84,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
             TelegramLanguageCode = "en",
         });
 
-        using var scope = host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        var account = await db.TelegramAccounts.SingleAsync(x => x.TelegramId == 4);
+        var account = await testScope.Database.TelegramAccounts.SingleAsync(x => x.TelegramId == 4);
 
         Assert.Equal("new_username", account.TelegramUserName);
         Assert.Equal("NewFirst", account.TelegramFirstName);
@@ -98,7 +95,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExists_ShouldReturnInvalidArgument_WhenServiceIdHeaderIsMissing()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClientWithoutServiceIdHeader();
 
         var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsAsync(
@@ -110,7 +107,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldCreateNewUser_WhenGoogleSubjectIsUnknown()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var response = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
@@ -126,7 +123,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldReturnSameUserId_WhenCalledTwiceForSameGoogleSubject()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var first = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
@@ -145,7 +142,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldReturnSameUserId_WhenCalledForDifferentService()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var boardsClient = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
         var learnLanguageClient = host.CreateUserIdentityClient(ServiceId.LearnLanguage);
 
@@ -162,10 +159,8 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
 
         Assert.Equal(boards.UserId, learnLanguage.UserId);
 
-        using var scope = host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         var userId = Guid.Parse(boards.UserId);
-        var recordedServicesCount = await db.UserServices.CountAsync(x => x.UserId == userId);
+        var recordedServicesCount = await testScope.Database.UserServices.CountAsync(x => x.UserId == userId);
 
         Assert.Equal(2, recordedServicesCount);
     }
@@ -173,7 +168,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldRefreshGoogleProfile_WhenCalledAgainWithChangedFields()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
@@ -192,9 +187,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
             FamilyName = "Name",
         });
 
-        using var scope = host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        var account = await db.GoogleAccounts.SingleAsync(x => x.GoogleSubject == "google-4");
+        var account = await testScope.Database.GoogleAccounts.SingleAsync(x => x.GoogleSubject == "google-4");
 
         Assert.Equal("new@example.com", account.Email);
         Assert.Equal("New Name", account.Name);
@@ -205,7 +198,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldCreateDifferentUser_WhenSameUserAlreadyLoggedInViaTelegram()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var telegram = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
@@ -224,7 +217,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldReturnInvalidArgument_WhenGoogleSubjectIsEmpty()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
 
         var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsByGoogleAsync(
@@ -236,7 +229,7 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
     [Fact]
     public async Task CreateUserIfNotExistsByGoogle_ShouldReturnInvalidArgument_WhenServiceIdHeaderIsMissing()
     {
-        host.CleanDatabase();
+        using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClientWithoutServiceIdHeader();
 
         var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsByGoogleAsync(
