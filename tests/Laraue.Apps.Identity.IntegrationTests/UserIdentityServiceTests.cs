@@ -106,4 +106,142 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
 
         Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
     }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldCreateNewUser_WhenGoogleSubjectIsUnknown()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var response = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-1",
+            Email = "user@example.com",
+        });
+
+        Assert.True(Guid.TryParse(response.UserId, out var userId));
+        Assert.NotEqual(Guid.Empty, userId);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldReturnSameUserId_WhenCalledTwiceForSameGoogleSubject()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var first = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-2",
+        });
+
+        var second = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-2",
+        });
+
+        Assert.Equal(first.UserId, second.UserId);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldReturnSameUserId_WhenCalledForDifferentService()
+    {
+        host.CleanDatabase();
+        var boardsClient = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var learnLanguageClient = host.CreateUserIdentityClient(ServiceId.LearnLanguage);
+
+        var boards = await boardsClient.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-3",
+        });
+
+        var learnLanguage = await learnLanguageClient.CreateUserIfNotExistsByGoogleAsync(
+            new CreateUserIfNotExistsByGoogleRequest
+            {
+                GoogleSubject = "google-3",
+            });
+
+        Assert.Equal(boards.UserId, learnLanguage.UserId);
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+        var userId = Guid.Parse(boards.UserId);
+        var recordedServicesCount = await db.UserServices.CountAsync(x => x.UserId == userId);
+
+        Assert.Equal(2, recordedServicesCount);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldRefreshGoogleProfile_WhenCalledAgainWithChangedFields()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-4",
+            Email = "old@example.com",
+            Name = "Old Name",
+        });
+
+        await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-4",
+            Email = "new@example.com",
+            Name = "New Name",
+            GivenName = "New",
+            FamilyName = "Name",
+        });
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+        var account = await db.GoogleAccounts.SingleAsync(x => x.GoogleSubject == "google-4");
+
+        Assert.Equal("new@example.com", account.Email);
+        Assert.Equal("New Name", account.Name);
+        Assert.Equal("New", account.GivenName);
+        Assert.Equal("Name", account.FamilyName);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldCreateDifferentUser_WhenSameUserAlreadyLoggedInViaTelegram()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var telegram = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 6,
+        });
+
+        var google = await client.CreateUserIfNotExistsByGoogleAsync(new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-6",
+        });
+
+        Assert.NotEqual(telegram.UserId, google.UserId);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldReturnInvalidArgument_WhenGoogleSubjectIsEmpty()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsByGoogleAsync(
+            new CreateUserIfNotExistsByGoogleRequest { GoogleSubject = "" }).ResponseAsync);
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExistsByGoogle_ShouldReturnInvalidArgument_WhenServiceIdHeaderIsMissing()
+    {
+        host.CleanDatabase();
+        var client = host.CreateUserIdentityClientWithoutServiceIdHeader();
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsByGoogleAsync(
+            new CreateUserIfNotExistsByGoogleRequest { GoogleSubject = "google-7" }).ResponseAsync);
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
+    }
 }

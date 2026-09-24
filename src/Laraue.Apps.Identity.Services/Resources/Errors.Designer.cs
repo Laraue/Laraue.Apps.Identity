@@ -60,6 +60,15 @@ namespace Laraue.Apps.Identity.Services.Resources {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Google subject is required..
+        /// </summary>
+        internal static string GoogleSubjectRequired {
+            get {
+                return ResourceManager.GetString("GoogleSubjectRequired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Unknown service &apos;{0}&apos;..
         /// </summary>
         internal static string UnknownService {
