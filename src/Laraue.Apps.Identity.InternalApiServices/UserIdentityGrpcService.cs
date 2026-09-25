@@ -40,6 +40,28 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
     }
 
+    public override async Task<Internal.Contracts.CreateUserIfNotExistsResponse> CreateUserIfNotExistsByGoogle(
+        Internal.Contracts.CreateUserIfNotExistsByGoogleRequest request,
+        ServerCallContext context)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = await userIdentityService.CreateUserIfNotExistsByGoogleAsync(
+                ReadDomainServiceId(context),
+                request.GoogleSubject,
+                ToGoogleProfile(request),
+                context.CancellationToken);
+        }
+        catch (BadRequestException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+
+        return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
+    }
+
     /// <summary>
     /// The calling service is identified once per client via the
     /// <see cref="Internal.Contracts.GrpcHeaders.ServiceIdHeaderName"/> metadata header (attached by
@@ -72,4 +94,10 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         FirstName: request.HasTelegramFirstName ? request.TelegramFirstName : null,
         LastName: request.HasTelegramLastName ? request.TelegramLastName : null,
         LanguageCode: request.HasTelegramLanguageCode ? request.TelegramLanguageCode : null);
+
+    private static GoogleProfile ToGoogleProfile(Internal.Contracts.CreateUserIfNotExistsByGoogleRequest request) => new(
+        Email: request.HasEmail ? request.Email : null,
+        Name: request.HasName ? request.Name : null,
+        GivenName: request.HasGivenName ? request.GivenName : null,
+        FamilyName: request.HasFamilyName ? request.FamilyName : null);
 }

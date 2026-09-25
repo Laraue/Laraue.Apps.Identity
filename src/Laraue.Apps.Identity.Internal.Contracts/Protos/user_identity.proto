@@ -19,6 +19,13 @@ service UserIdentityService {
   // returned and the calling service is (idempotently) recorded as used by that user - a Telegram
   // account always resolves to the same global user regardless of which service is asking.
   rpc CreateUserIfNotExists (CreateUserIfNotExistsRequest) returns (CreateUserIfNotExistsResponse);
+
+  // Google counterpart of CreateUserIfNotExists: same get-or-create semantics, keyed by the Google
+  // account's stable `sub` claim instead of a Telegram id. The caller is responsible for verifying
+  // the Google ID token itself - this service trusts the subject/profile it's given. A Google
+  // account and a Telegram account always resolve to *different* global users here; linking the two
+  // is a separate, future operation.
+  rpc CreateUserIfNotExistsByGoogle (CreateUserIfNotExistsByGoogleRequest) returns (CreateUserIfNotExistsResponse);
 }
 
 enum ServiceId {
@@ -43,4 +50,16 @@ message CreateUserIfNotExistsRequest {
 message CreateUserIfNotExistsResponse {
   // The global Laraue user id (GUID, string form).
   string user_id = 1;
+}
+
+message CreateUserIfNotExistsByGoogleRequest {
+  // The verified Google ID token's `sub` claim - required, non-empty.
+  string google_subject = 1;
+
+  // Google profile claims as currently known by the calling service. Optional, and refreshed on
+  // every call, same as the Telegram profile fields.
+  optional string email = 2;
+  optional string name = 3;
+  optional string given_name = 4;
+  optional string family_name = 5;
 }

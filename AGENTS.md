@@ -13,15 +13,21 @@ recorded. It is intentionally **not** a billing/subscription service - that's
 `Laraue.Apps.Billing`, a separate app; this service only answers "who is this user, globally" and
 "what has this user touched".
 
-**Stage 1 (this state)**: internal gRPC only, one login method (Telegram id). Callers
+**Stage 1**: internal gRPC only, one login method (Telegram id). Callers
 (`Laraue.Apps.Boards` first, `Laraue.Apps.LearnLanguage` next) call
 `UserIdentityService.CreateUserIfNotExists` with their local Telegram id + which service they are,
 and get back the global user id, creating the global user on first sight of that Telegram account.
 
+**Stage 2 (this state)**: Google as a second login method -
+`UserIdentityService.CreateUserIfNotExistsByGoogle`, same get-or-create semantics keyed by the
+Google ID token's `sub` claim (`GoogleAccount` table). The **caller** verifies the Google ID token
+(Boards does it with its own Google client id) and passes only the verified subject/profile here -
+this service never sees the raw token and has no Google config. A Google account and a Telegram
+account always resolve to *different* global users for now; linking them onto one user is a
+separate, not-yet-built operation (BRD-218).
+
 **Not built yet - future stages, don't add speculatively**:
-- Google Auth as a second login method (a `GoogleAccount` table alongside `TelegramAccount`,
-  resolving to the same kind of global `User` - the schema already isolates "how a user
-  authenticates" from the `User` row itself for exactly this reason, see "Domain model" below).
+- Linking a Google account and a Telegram account onto the same global `User` (BRD-218).
 - Any public-facing API (a `WebApiHost`, e.g. for "see all your subscriptions/services/transactions
   in one place"). Stage 1 is internal-gRPC-only on purpose - see "Project layout".
 - Aggregating actual subscriptions/transactions from `Laraue.Apps.Billing` here. This service only
@@ -33,8 +39,8 @@ and get back the global user id, creating the global user on first sight of that
 
 - `User` - a global Laraue user identity (`Id` Guid, `CreatedAt`). Carries no credential itself -
   see `TelegramAccount` below for how a user actually authenticates. Keeping credentials in their
-  own table(s) rather than on `User` is what lets a second login method (Google, stage 2) be added
-  later without touching `User` or anything downstream of it.
+  own table(s) rather than on `User` is what let a second login method (`GoogleAccount`, stage 2)
+  be added without touching `User` or anything downstream of it.
 - `TelegramAccount` - links a Telegram account to a `User`. `TelegramId` (the Telegram-assigned
   numeric id, **not** database-generated - see the `ValueGeneratedNever()` note in
   `DatabaseContext`) is the actual lookup key: it's globally unique per Telegram account, not per
@@ -49,6 +55,10 @@ and get back the global user id, creating the global user on first sight of that
   shape doesn't map cleanly onto it). All optional, and refreshed on *every*
   `CreateUserIfNotExists` call, not just when the row is first created - Telegram profiles change
   (username, display name) and this is meant to stay current, not just capture a first snapshot.
+- `GoogleAccount` - the Google counterpart of `TelegramAccount`. Keyed by `GoogleSubject` (the ID
+  token's `sub` claim - stable and never reused, unlike `Email`, which the account owner can
+  change). Profile fields (`Email`/`Name`/`GivenName`/`FamilyName`) use the ID token's standard
+  claim names and are refreshed on every call, same as `TelegramAccount`'s.
 - `Service` - a consuming app (`LaraueBoards`, `LearnLanguage`), identified by its own `ServiceId`
   enum. This is a deliberately independent registry from `Laraue.Apps.Billing`'s own `ServiceId`
   enum - the two services aren't schema-coupled, even though the numeric values happen to start the
@@ -68,7 +78,7 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
 - `src/Laraue.Apps.Identity.DataAccess` - EF Core `DatabaseContext`, entities, migrations, and the
   static seed data (`Data/ServicesData.cs`).
 - `src/Laraue.Apps.Identity.Internal.Contracts` - the `.proto` service-to-service contract
-  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`) plus its generated
+  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`) plus its generated
   stubs, built with `GrpcServices="Both"` so it ships both the client stub (for callers like
   `Laraue.Apps.Boards`) and the server base class from one package. `IsPackable=true` - published to
   NuGet.org as `Laraue.Apps.Identity.Internal.Contracts` via `.github/workflows/nuget-publish.yml`
@@ -111,10 +121,12 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
   `WebApplicationFactory<Program>` for `InternalApiHost` and hands back a real generated
   `UserIdentityService.UserIdentityServiceClient` wired to the in-memory `TestServer` via
   `Grpc.Net.Client` (no real socket) - tests call the gRPC contract the same way another Laraue app
-  would, not the business-logic interface directly. `InternalApiTestHost.CleanDatabase()` /
-  `DbExtensions.CleanDatabase` wipe `UserServices`/`TelegramAccounts`/`Users` (not the seeded
-  `Services` table) - call it at the start of every test since, unlike Billing's tariffs, this
-  service's tests write rows from the very first test.
+  would, not the business-logic interface directly. Same per-test pattern as Boards: every test
+  starts with `using var testScope = host.CreateTestScope();` - `InternalApiTestHostScope`'s
+  constructor calls `DbExtensions.CleanDatabase` (wipes `UserServices`/`TelegramAccounts`/
+  `GoogleAccounts`/`Users`, not the seeded `Services` table), and `testScope.Database` is the
+  (no-tracking) `DatabaseContext` for direct assertions. Test classes are marked
+  `[Collection("IntegrationTest")]` so they never run in parallel against the shared test database.
 
 ## EF Core
 

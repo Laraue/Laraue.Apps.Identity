@@ -21,6 +21,16 @@ public sealed record TelegramProfile(
     string? LastName,
     string? LanguageCode);
 
+/// <summary>
+/// Google profile claims as currently known by the calling service - see <see cref="GoogleAccount"/>.
+/// All optional: which claims a Google ID token carries depends on the scopes the caller requested.
+/// </summary>
+public sealed record GoogleProfile(
+    string? Email,
+    string? Name,
+    string? GivenName,
+    string? FamilyName);
+
 public interface IUserIdentityService
 {
     /// <summary>
@@ -34,6 +44,19 @@ public interface IUserIdentityService
         long telegramId,
         TelegramProfile profile,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Google counterpart of <see cref="CreateUserIfNotExistsAsync"/>: resolves the global user id
+    /// for the given Google account (its ID token's <c>sub</c> claim), creating a new global user
+    /// and linking the Google account to it if none exists yet. Records <paramref name="serviceId"/>
+    /// as used and refreshes the stored profile the same way. The caller must have verified the ID
+    /// token already - this method trusts <paramref name="googleSubject"/> as given.
+    /// </summary>
+    Task<Guid> CreateUserIfNotExistsByGoogleAsync(
+        ServiceId serviceId,
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken);
 }
 
 public class UserIdentityService(DatabaseContext context) : IUserIdentityService
@@ -44,16 +67,41 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
         TelegramProfile profile,
         CancellationToken cancellationToken)
     {
-        if (!Enum.IsDefined(serviceId))
-        {
-            throw new BadRequestException(nameof(serviceId), string.Format(Errors.UnknownService, serviceId));
-        }
+        EnsureServiceIsKnown(serviceId);
 
         var userId = await GetOrCreateUserIdAsync(telegramId, profile, cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
 
         return userId;
+    }
+
+    public async Task<Guid> CreateUserIfNotExistsByGoogleAsync(
+        ServiceId serviceId,
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken)
+    {
+        EnsureServiceIsKnown(serviceId);
+
+        if (string.IsNullOrWhiteSpace(googleSubject))
+        {
+            throw new BadRequestException(nameof(googleSubject), Errors.GoogleSubjectRequired);
+        }
+
+        var userId = await GetOrCreateUserIdByGoogleAsync(googleSubject, profile, cancellationToken);
+
+        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+
+        return userId;
+    }
+
+    private static void EnsureServiceIsKnown(ServiceId serviceId)
+    {
+        if (!Enum.IsDefined(serviceId))
+        {
+            throw new BadRequestException(nameof(serviceId), string.Format(Errors.UnknownService, serviceId));
+        }
     }
 
     /// <summary>
@@ -114,6 +162,65 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
         account.TelegramFirstName = profile.FirstName;
         account.TelegramLastName = profile.LastName;
         account.TelegramLanguageCode = profile.LanguageCode;
+    }
+
+    /// <summary>
+    /// Google counterpart of <see cref="GetOrCreateUserIdAsync"/>, including its lost-race
+    /// handling for two concurrent first logins with the same Google account.
+    /// </summary>
+    private async Task<Guid> GetOrCreateUserIdByGoogleAsync(
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var existingAccount = await context.GoogleAccounts
+            .SingleOrDefaultAsync(x => x.GoogleSubject == googleSubject, cancellationToken);
+
+        if (existingAccount is not null)
+        {
+            ApplyProfile(existingAccount, profile);
+            await context.SaveChangesAsync(cancellationToken);
+
+            return existingAccount.UserId;
+        }
+
+        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow };
+        var newAccount = new GoogleAccount
+        {
+            GoogleSubject = googleSubject,
+            UserId = newUser.Id,
+            CreatedAt = newUser.CreatedAt.UtcDateTime,
+        };
+        ApplyProfile(newAccount, profile);
+
+        context.Users.Add(newUser);
+        context.GoogleAccounts.Add(newAccount);
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return newUser.Id;
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race with a concurrent call for the same Google account - the GoogleSubject
+            // primary key rejected our insert. Drop our attempt and use whichever row won.
+            context.Entry(newUser).State = EntityState.Detached;
+            context.Entry(newAccount).State = EntityState.Detached;
+
+            return await context.GoogleAccounts
+                .Where(x => x.GoogleSubject == googleSubject)
+                .Select(x => x.UserId)
+                .SingleAsync(cancellationToken);
+        }
+    }
+
+    private static void ApplyProfile(GoogleAccount account, GoogleProfile profile)
+    {
+        account.Email = profile.Email;
+        account.Name = profile.Name;
+        account.GivenName = profile.GivenName;
+        account.FamilyName = profile.FamilyName;
     }
 
     private async Task EnsureUserServiceRecordedAsync(

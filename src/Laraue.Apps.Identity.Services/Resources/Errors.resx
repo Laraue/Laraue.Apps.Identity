@@ -21,4 +21,7 @@
     <data name="UnknownService" xml:space="preserve">
         <value>Unknown service '{0}'.</value>
     </data>
+    <data name="GoogleSubjectRequired" xml:space="preserve">
+        <value>Google subject is required.</value>
+    </data>
 </root>
