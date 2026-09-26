@@ -31,5 +31,5 @@ public class TelegramAccount
     [MaxLength(2)]
     public string? TelegramLanguageCode { get; set; }
 
-    public DateTimeOffset CreatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

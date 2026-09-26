@@ -110,7 +110,7 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("telegram_id");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
+                    b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
@@ -154,7 +154,7 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
+                    b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
@@ -174,7 +174,7 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("service_id");
 
-                    b.Property<DateTimeOffset>("FirstSeenAt")
+                    b.Property<DateTime>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("first_seen_at");
 

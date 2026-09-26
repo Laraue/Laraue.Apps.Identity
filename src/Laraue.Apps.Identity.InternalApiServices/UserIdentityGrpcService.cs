@@ -1,4 +1,4 @@
-using Grpc.Core;
+﻿using Grpc.Core;
 using Laraue.Apps.Identity.Services;
 using Laraue.Core.Exceptions.Web;
 // The generated proto service is also called `UserIdentityService`, colliding with the business
@@ -60,6 +60,87 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         }
 
         return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
+    }
+
+    public override async Task<Internal.Contracts.LinkAccountResponse> LinkTelegramAccount(
+        Internal.Contracts.LinkTelegramAccountRequest request,
+        ServerCallContext context)
+    {
+        var result = await ExecuteLinkAsync(() => userIdentityService.LinkTelegramAccountAsync(
+            ReadDomainServiceId(context),
+            ParseUserId(request.UserId),
+            request.TelegramId,
+            new TelegramProfile(
+                UserName: request.HasTelegramUsername ? request.TelegramUsername : null,
+                FirstName: request.HasTelegramFirstName ? request.TelegramFirstName : null,
+                LastName: request.HasTelegramLastName ? request.TelegramLastName : null,
+                LanguageCode: request.HasTelegramLanguageCode ? request.TelegramLanguageCode : null),
+            context.CancellationToken));
+
+        return ToLinkAccountResponse(result);
+    }
+
+    public override async Task<Internal.Contracts.LinkAccountResponse> LinkGoogleAccount(
+        Internal.Contracts.LinkGoogleAccountRequest request,
+        ServerCallContext context)
+    {
+        var result = await ExecuteLinkAsync(() => userIdentityService.LinkGoogleAccountAsync(
+            ReadDomainServiceId(context),
+            ParseUserId(request.UserId),
+            request.GoogleSubject,
+            new GoogleProfile(
+                Email: request.HasEmail ? request.Email : null,
+                Name: request.HasName ? request.Name : null,
+                GivenName: request.HasGivenName ? request.GivenName : null,
+                FamilyName: request.HasFamilyName ? request.FamilyName : null),
+            context.CancellationToken));
+
+        return ToLinkAccountResponse(result);
+    }
+
+    private static async Task<LinkAccountResult> ExecuteLinkAsync(Func<Task<LinkAccountResult>> link)
+    {
+        try
+        {
+            return await link();
+        }
+        catch (BadRequestException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+        catch (NotFoundException ex)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+        }
+    }
+
+    private static Guid ParseUserId(string userId)
+    {
+        return Guid.TryParse(userId, out var parsed)
+            ? parsed
+            : throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid user id '{userId}'."));
+    }
+
+    private static Internal.Contracts.LinkAccountResponse ToLinkAccountResponse(LinkAccountResult result)
+    {
+        var response = new Internal.Contracts.LinkAccountResponse
+        {
+            Result = result.Outcome switch
+            {
+                LinkAccountOutcome.Linked => Internal.Contracts.LinkAccountResult.Linked,
+                LinkAccountOutcome.Moved => Internal.Contracts.LinkAccountResult.Moved,
+                LinkAccountOutcome.OwnerUsedByAnotherService => Internal.Contracts.LinkAccountResult.OwnerUsedByAnotherService,
+                LinkAccountOutcome.UserHasOtherAccount => Internal.Contracts.LinkAccountResult.UserHasOtherAccount,
+                _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, null),
+            },
+        };
+
+        if (result.PreviousUserId is { } previousUserId)
+        {
+            response.PreviousUserId = previousUserId.ToString();
+        }
+
+        return response;
     }
 
     /// <summary>
