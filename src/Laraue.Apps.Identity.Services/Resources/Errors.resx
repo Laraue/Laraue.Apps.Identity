@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <root>
     <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
@@ -20,6 +20,9 @@
     </resheader>
     <data name="UnknownService" xml:space="preserve">
         <value>Unknown service '{0}'.</value>
+    </data>
+    <data name="UserNotFound" xml:space="preserve">
+        <value>User '{0}' is not found.</value>
     </data>
     <data name="GoogleSubjectRequired" xml:space="preserve">
         <value>Google subject is required.</value>

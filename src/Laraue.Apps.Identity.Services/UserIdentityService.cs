@@ -1,6 +1,7 @@
-using Laraue.Apps.Identity.DataAccess;
+﻿using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.DataAccess.Entities;
 using Laraue.Apps.Identity.Services.Resources;
+using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.Exceptions.Web;
 using Microsoft.EntityFrameworkCore;
 // UserIdentityService.cs (this business-logic class) shares its name with the DataAccess entity
@@ -31,6 +32,30 @@ public sealed record GoogleProfile(
     string? GivenName,
     string? FamilyName);
 
+public enum LinkAccountOutcome
+{
+    /// <summary>Linked to the user - newly, or it already was.</summary>
+    Linked,
+
+    /// <summary>Moved to the user from its previous owner, <see cref="LinkAccountResult.PreviousUserId"/>.</summary>
+    Moved,
+
+    /// <summary>
+    /// Not moved: its current owner, <see cref="LinkAccountResult.PreviousUserId"/>, is also used by
+    /// another service, which would lose that user's account.
+    /// </summary>
+    OwnerUsedByAnotherService,
+
+    /// <summary>The user already has a different account of this kind.</summary>
+    UserHasOtherAccount,
+}
+
+/// <param name="PreviousUserId">
+/// The account's previous owner, for <see cref="LinkAccountOutcome.Moved"/> and
+/// <see cref="LinkAccountOutcome.OwnerUsedByAnotherService"/>.
+/// </param>
+public sealed record LinkAccountResult(LinkAccountOutcome Outcome, Guid? PreviousUserId = null);
+
 public interface IUserIdentityService
 {
     /// <summary>
@@ -57,9 +82,35 @@ public interface IUserIdentityService
         string googleSubject,
         GoogleProfile profile,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Links a Telegram account to the existing global user <paramref name="userId"/> - at most one
+    /// per user. If the account belongs to another global user (its current owner), it's moved to
+    /// <paramref name="userId"/> unless a service other than <paramref name="serviceId"/> uses that
+    /// owner. The caller must check its own copy of the owner has no data before calling. Records <paramref name="serviceId"/> as used by the user and
+    /// refreshes the stored profile on success. Throws <see cref="NotFoundException"/> for an unknown
+    /// user. The caller must have verified the Telegram login data already.
+    /// </summary>
+    Task<LinkAccountResult> LinkTelegramAccountAsync(
+        ServiceId serviceId,
+        Guid userId,
+        long telegramId,
+        TelegramProfile profile,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Google counterpart of <see cref="LinkTelegramAccountAsync"/>, keyed by the verified ID token's
+    /// <c>sub</c> claim.
+    /// </summary>
+    Task<LinkAccountResult> LinkGoogleAccountAsync(
+        ServiceId serviceId,
+        Guid userId,
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken);
 }
 
-public class UserIdentityService(DatabaseContext context) : IUserIdentityService
+public class UserIdentityService(DatabaseContext context, IDateTimeProvider dateTimeProvider) : IUserIdentityService
 {
     public async Task<Guid> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
@@ -96,6 +147,124 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
         return userId;
     }
 
+    public async Task<LinkAccountResult> LinkTelegramAccountAsync(
+        ServiceId serviceId,
+        Guid userId,
+        long telegramId,
+        TelegramProfile profile,
+        CancellationToken cancellationToken)
+    {
+        EnsureServiceIsKnown(serviceId);
+        await EnsureUserExistsAsync(userId, cancellationToken);
+
+        var account = await context.TelegramAccounts
+            .SingleOrDefaultAsync(x => x.TelegramId == telegramId, cancellationToken);
+
+        if (account?.UserId != userId
+            && await context.TelegramAccounts.AnyAsync(x => x.UserId == userId, cancellationToken))
+        {
+            return new LinkAccountResult(LinkAccountOutcome.UserHasOtherAccount);
+        }
+
+        var previousUserId = account is not null && account.UserId != userId ? account.UserId : (Guid?)null;
+        if (previousUserId is not null
+            && !await IsUsedOnlyByAsync(previousUserId.Value, serviceId, cancellationToken))
+        {
+            return new LinkAccountResult(LinkAccountOutcome.OwnerUsedByAnotherService, previousUserId);
+        }
+
+        if (account is null)
+        {
+            account = new TelegramAccount
+            {
+                TelegramId = telegramId,
+                CreatedAt = dateTimeProvider.UtcNow,
+            };
+            context.TelegramAccounts.Add(account);
+        }
+
+        account.UserId = userId;
+        ApplyProfile(account, profile);
+        await context.SaveChangesAsync(cancellationToken);
+
+        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+
+        return previousUserId is null
+            ? new LinkAccountResult(LinkAccountOutcome.Linked)
+            : new LinkAccountResult(LinkAccountOutcome.Moved, previousUserId);
+    }
+
+    public async Task<LinkAccountResult> LinkGoogleAccountAsync(
+        ServiceId serviceId,
+        Guid userId,
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken)
+    {
+        EnsureServiceIsKnown(serviceId);
+
+        if (string.IsNullOrWhiteSpace(googleSubject))
+        {
+            throw new BadRequestException(nameof(googleSubject), Errors.GoogleSubjectRequired);
+        }
+
+        await EnsureUserExistsAsync(userId, cancellationToken);
+
+        var account = await context.GoogleAccounts
+            .SingleOrDefaultAsync(x => x.GoogleSubject == googleSubject, cancellationToken);
+
+        if (account?.UserId != userId
+            && await context.GoogleAccounts.AnyAsync(x => x.UserId == userId, cancellationToken))
+        {
+            return new LinkAccountResult(LinkAccountOutcome.UserHasOtherAccount);
+        }
+
+        var previousUserId = account is not null && account.UserId != userId ? account.UserId : (Guid?)null;
+        if (previousUserId is not null
+            && !await IsUsedOnlyByAsync(previousUserId.Value, serviceId, cancellationToken))
+        {
+            return new LinkAccountResult(LinkAccountOutcome.OwnerUsedByAnotherService, previousUserId);
+        }
+
+        if (account is null)
+        {
+            account = new GoogleAccount
+            {
+                GoogleSubject = googleSubject,
+                CreatedAt = dateTimeProvider.UtcNow,
+            };
+            context.GoogleAccounts.Add(account);
+        }
+
+        account.UserId = userId;
+        ApplyProfile(account, profile);
+        await context.SaveChangesAsync(cancellationToken);
+
+        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+
+        return previousUserId is null
+            ? new LinkAccountResult(LinkAccountOutcome.Linked)
+            : new LinkAccountResult(LinkAccountOutcome.Moved, previousUserId);
+    }
+
+    private async Task EnsureUserExistsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (!await context.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+        {
+            throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="userId"/> is used by no service other than <paramref name="serviceId"/> -
+    /// the condition for moving one of that user's accounts to another user on the service's request.
+    /// </summary>
+    private Task<bool> IsUsedOnlyByAsync(Guid userId, ServiceId serviceId, CancellationToken cancellationToken)
+    {
+        return context.UserServices
+            .AllAsync(x => x.UserId != userId || x.ServiceId == serviceId, cancellationToken);
+    }
+
     private static void EnsureServiceIsKnown(ServiceId serviceId)
     {
         if (!Enum.IsDefined(serviceId))
@@ -125,7 +294,7 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
             return existingAccount.UserId;
         }
 
-        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow };
+        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = dateTimeProvider.UtcNow };
         var newAccount = new TelegramAccount
         {
             TelegramId = telegramId,
@@ -184,12 +353,12 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
             return existingAccount.UserId;
         }
 
-        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow };
+        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = dateTimeProvider.UtcNow };
         var newAccount = new GoogleAccount
         {
             GoogleSubject = googleSubject,
             UserId = newUser.Id,
-            CreatedAt = newUser.CreatedAt.UtcDateTime,
+            CreatedAt = newUser.CreatedAt,
         };
         ApplyProfile(newAccount, profile);
 
@@ -240,7 +409,7 @@ public class UserIdentityService(DatabaseContext context) : IUserIdentityService
         {
             UserId = userId,
             ServiceId = serviceId,
-            FirstSeenAt = DateTimeOffset.UtcNow,
+            FirstSeenAt = dateTimeProvider.UtcNow,
         });
 
         try

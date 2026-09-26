@@ -26,6 +26,18 @@ service UserIdentityService {
   // account and a Telegram account always resolve to *different* global users here; linking the two
   // is a separate, future operation.
   rpc CreateUserIfNotExistsByGoogle (CreateUserIfNotExistsByGoogleRequest) returns (CreateUserIfNotExistsResponse);
+
+  // Links a Telegram account to an existing global user (e.g. a user who signed up with Google
+  // connects Telegram). A user can have at most one Telegram account. If the Telegram account already
+  // belongs to another global user (its current owner), it is moved to user_id unless another
+  // service uses that owner. Before calling, the caller must make sure its own copy of the current
+  // owner has no data - if it has, don't call: the account would be moved away from it. The caller
+  // must also have verified the Telegram login data already. Fails with NOT_FOUND for an unknown
+  // user_id.
+  rpc LinkTelegramAccount (LinkTelegramAccountRequest) returns (LinkAccountResponse);
+
+  // Google counterpart of LinkTelegramAccount, keyed by the verified ID token's `sub` claim.
+  rpc LinkGoogleAccount (LinkGoogleAccountRequest) returns (LinkAccountResponse);
 }
 
 enum ServiceId {
@@ -62,4 +74,44 @@ message CreateUserIfNotExistsByGoogleRequest {
   optional string name = 3;
   optional string given_name = 4;
   optional string family_name = 5;
+}
+
+message LinkTelegramAccountRequest {
+  // The global user id (GUID, string form) to link the account to.
+  string user_id = 1;
+  int64 telegram_id = 2;
+  optional string telegram_username = 3;
+  optional string telegram_first_name = 4;
+  optional string telegram_last_name = 5;
+  optional string telegram_language_code = 6;
+}
+
+message LinkGoogleAccountRequest {
+  // The global user id (GUID, string form) to link the account to.
+  string user_id = 1;
+  // The verified Google ID token's `sub` claim - required, non-empty.
+  string google_subject = 2;
+  optional string email = 3;
+  optional string name = 4;
+  optional string given_name = 5;
+  optional string family_name = 6;
+}
+
+enum LinkAccountResult {
+  LINK_ACCOUNT_RESULT_UNSPECIFIED = 0;
+  // Linked to the user - newly, or it already was (linking is idempotent).
+  LINK_ACCOUNT_RESULT_LINKED = 1;
+  // Moved to the user from its previous owner, previous_user_id.
+  LINK_ACCOUNT_RESULT_MOVED = 2;
+  // Not moved: its current owner, previous_user_id, is also used by another service, which would
+  // lose that user's account.
+  LINK_ACCOUNT_RESULT_OWNER_USED_BY_ANOTHER_SERVICE = 3;
+  // The user already has a different account of this kind (one Telegram, one Google per user).
+  LINK_ACCOUNT_RESULT_USER_HAS_OTHER_ACCOUNT = 4;
+}
+
+message LinkAccountResponse {
+  LinkAccountResult result = 1;
+  // The account's previous owner, for MOVED and OWNER_USED_BY_ANOTHER_SERVICE.
+  optional string previous_user_id = 2;
 }

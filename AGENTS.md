@@ -18,16 +18,29 @@ recorded. It is intentionally **not** a billing/subscription service - that's
 `UserIdentityService.CreateUserIfNotExists` with their local Telegram id + which service they are,
 and get back the global user id, creating the global user on first sight of that Telegram account.
 
-**Stage 2 (this state)**: Google as a second login method -
+**Stage 2**: Google as a second login method -
 `UserIdentityService.CreateUserIfNotExistsByGoogle`, same get-or-create semantics keyed by the
 Google ID token's `sub` claim (`GoogleAccount` table). The **caller** verifies the Google ID token
 (Boards does it with its own Google client id) and passes only the verified subject/profile here -
-this service never sees the raw token and has no Google config. A Google account and a Telegram
-account always resolve to *different* global users for now; linking them onto one user is a
-separate, not-yet-built operation (BRD-218).
+this service never sees the raw token and has no Google config. Signing up with Google and with
+Telegram creates *different* global users.
+
+**Stage 3 (this state)**: account linking (BRD-218) - `LinkTelegramAccount`/`LinkGoogleAccount` add
+the missing account to an existing global user, at most one Telegram and one Google account per
+user. Business outcomes come back as a `LinkAccountResult` value (linked / moved / not moved
+because its owner is used by another service / user already has another account of that kind), not as gRPC errors, so the caller
+can react to each; only real errors are RPC failures (`NOT_FOUND` unknown user, `INVALID_ARGUMENT`).
+An account that belongs to another global user (its current owner) is moved to the requested user
+unless another service uses that owner (`IsUsedOnlyByAsync`) - so an account is never pulled away
+from a user another Laraue app knows. Whether the owner has data in the *calling* service is the
+caller's check, done before calling: this service can't see that data, and the contract says not to
+call at all when the owner has some (there's deliberately no "move only if empty" flag - Boards, the
+only caller, would always set it). The owner left behind is not deleted.
 
 **Not built yet - future stages, don't add speculatively**:
-- Linking a Google account and a Telegram account onto the same global `User` (BRD-218).
+- Merging two global users that both have data (moving everything from one into the other, with
+  a "merged into" redirect for services that knew the old id) - today an account can only be moved
+  away from an owner no other service uses.
 - Any public-facing API (a `WebApiHost`, e.g. for "see all your subscriptions/services/transactions
   in one place"). Stage 1 is internal-gRPC-only on purpose - see "Project layout".
 - Aggregating actual subscriptions/transactions from `Laraue.Apps.Billing` here. This service only
@@ -78,7 +91,7 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
 - `src/Laraue.Apps.Identity.DataAccess` - EF Core `DatabaseContext`, entities, migrations, and the
   static seed data (`Data/ServicesData.cs`).
 - `src/Laraue.Apps.Identity.Internal.Contracts` - the `.proto` service-to-service contract
-  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`) plus its generated
+  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`/`LinkTelegramAccount`/`LinkGoogleAccount`) plus its generated
   stubs, built with `GrpcServices="Both"` so it ships both the client stub (for callers like
   `Laraue.Apps.Boards`) and the server base class from one package. `IsPackable=true` - published to
   NuGet.org as `Laraue.Apps.Identity.Internal.Contracts` via `.github/workflows/nuget-publish.yml`
@@ -138,6 +151,10 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
   primary key to an identity column, which would silently ignore whatever `TelegramId` the caller
   actually sent. If you add another external-id-as-primary-key table later (e.g. a Google account
   id), it needs the same treatment.
+- Timestamps are UTC `DateTime` (not `DateTimeOffset`), taken from `IDateTimeProvider`
+  (`Laraue.Core.DateTime`, registered in `AddInternalApiServices()`) rather than `DateTime.UtcNow`,
+  same as Boards. Npgsql stores them as `timestamp with time zone` - the same column type a
+  `DateTimeOffset` maps to, which is why switching the CLR type needed no schema change.
 - Reference data (`Service`) is seeded via EF Core `HasData` in `DatabaseContext.OnModelCreating`,
   sourced from `DataAccess/Data/ServicesData.cs` - adding a new consuming service means editing that
   file and adding a migration, same convention as Billing's `*Data.cs` classes.

@@ -16,5 +16,5 @@ public class UserService
 
     public Service? Service { get; set; }
 
-    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTime FirstSeenAt { get; set; }
 }

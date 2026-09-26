@@ -6,7 +6,7 @@
     <PackageProjectUrl>https://github.com/win7user10/Laraue.Apps.Identity</PackageProjectUrl>
     <!-- Designate all projects as non-package projects by default -->
     <IsPackable>false</IsPackable>
-    <Version>0.0.3</Version>
+    <Version>0.0.4</Version>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -18,6 +18,7 @@
 
   <PropertyGroup>
     <LaraueCoreDataAccessVersion>10.8.0</LaraueCoreDataAccessVersion>
+    <LaraueCoreDateTimeVersion>10.0.0</LaraueCoreDateTimeVersion>
     <LaraueCoreTestingVersion>10.1.0</LaraueCoreTestingVersion>
     <EfCoreVersion>10.0.0</EfCoreVersion>
     <NpgsqlEfCoreVersion>10.0.0</NpgsqlEfCoreVersion>
