@@ -35,7 +35,10 @@ unless another service uses that owner (`IsUsedOnlyByAsync`) - so an account is 
 from a user another Laraue app knows. Whether the owner has data in the *calling* service is the
 caller's check, done before calling: this service can't see that data, and the contract says not to
 call at all when the owner has some (there's deliberately no "move only if empty" flag - Boards, the
-only caller, would always set it). The owner left behind is not deleted.
+only caller, would always set it). The owner left behind is not deleted: if the move took their last
+sign-in account, `User.MergedIntoUserId`/`MergedAt` record which user they were absorbed into (a
+trail for support/analytics and for later token revocation); an owner who keeps their other account
+stays a regular user.
 
 **Not built yet - future stages, don't add speculatively**:
 - Merging two global users that both have data (moving everything from one into the other, with

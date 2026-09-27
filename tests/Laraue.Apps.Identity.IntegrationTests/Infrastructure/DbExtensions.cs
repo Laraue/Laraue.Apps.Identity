@@ -14,6 +14,7 @@ public static class DbExtensions
         dbContext.UserServices.ExecuteDelete();
         dbContext.TelegramAccounts.ExecuteDelete();
         dbContext.GoogleAccounts.ExecuteDelete();
+        dbContext.Users.ExecuteUpdate(x => x.SetProperty(u => u.MergedIntoUserId, (Guid?)null));
         dbContext.Users.ExecuteDelete();
     }
 }

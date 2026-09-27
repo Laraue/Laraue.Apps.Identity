@@ -188,6 +188,41 @@ public class AccountLinkingTests(InternalApiTestHost host) : IClassFixture<Inter
         Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
     }
 
+    [Fact]
+    public async Task LinkTelegramAccount_ShouldMarkOwnerAsMerged_WhenItWasTheirOnlyAccount()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var ownerId = await CreateTelegramUserAsync(client, 115);
+        var userId = await CreateGoogleUserAsync(client, "google-15");
+
+        await client.LinkTelegramAccountAsync(new LinkTelegramAccountRequest { UserId = userId, TelegramId = 115 });
+
+        var owner = await testScope.Database.Users.SingleAsync(x => x.Id == Guid.Parse(ownerId));
+        Assert.Equal(Guid.Parse(userId), owner.MergedIntoUserId);
+        Assert.NotNull(owner.MergedAt);
+    }
+
+    [Fact]
+    public async Task LinkGoogleAccount_ShouldNotMarkOwnerAsMerged_WhenTheyKeepAnotherAccount()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var ownerId = await CreateTelegramUserAsync(client, 116);
+        await client.LinkGoogleAccountAsync(new LinkGoogleAccountRequest { UserId = ownerId, GoogleSubject = "google-16" });
+        var userId = await CreateTelegramUserAsync(client, 117);
+
+        var response = await client.LinkGoogleAccountAsync(new LinkGoogleAccountRequest
+        {
+            UserId = userId,
+            GoogleSubject = "google-16",
+        });
+
+        Assert.Equal(LinkAccountResult.Moved, response.Result);
+        var owner = await testScope.Database.Users.SingleAsync(x => x.Id == Guid.Parse(ownerId));
+        Assert.Null(owner.MergedIntoUserId);
+    }
+
     private static async Task<string> CreateTelegramUserAsync(UserIdentityService.UserIdentityServiceClient client, long telegramId)
     {
         var response = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = telegramId });

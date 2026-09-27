@@ -33,6 +33,14 @@ public class DatabaseContext : DbContext
             builder.HasKey(x => x.GoogleSubject);
         });
 
+        modelBuilder.Entity<User>(builder =>
+        {
+            builder.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.MergedIntoUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<UserService>(builder =>
         {
             builder.HasKey(x => new { x.UserId, x.ServiceId });
