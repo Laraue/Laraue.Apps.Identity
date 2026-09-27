@@ -185,6 +185,11 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
 
         account.UserId = userId;
         ApplyProfile(account, profile);
+        if (previousUserId is not null)
+        {
+            await MarkMergedIfNoAccountsLeftAsync(previousUserId.Value, userId, cancellationToken);
+        }
+
         await context.SaveChangesAsync(cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
@@ -238,6 +243,11 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
 
         account.UserId = userId;
         ApplyProfile(account, profile);
+        if (previousUserId is not null)
+        {
+            await MarkMergedIfNoAccountsLeftAsync(previousUserId.Value, userId, cancellationToken);
+        }
+
         await context.SaveChangesAsync(cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
@@ -245,6 +255,26 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
             : new LinkAccountResult(LinkAccountOutcome.Moved, previousUserId);
+    }
+
+    /// <summary>
+    /// Called when an account is being moved away from <paramref name="previousUserId"/> (not saved
+    /// yet): if that was the user's last sign-in account, marks them as merged into
+    /// <paramref name="userId"/>. A user who still has their other account stays a regular user.
+    /// </summary>
+    private async Task MarkMergedIfNoAccountsLeftAsync(Guid previousUserId, Guid userId, CancellationToken cancellationToken)
+    {
+        var accountsLeft = await context.TelegramAccounts.CountAsync(x => x.UserId == previousUserId, cancellationToken)
+            + await context.GoogleAccounts.CountAsync(x => x.UserId == previousUserId, cancellationToken);
+
+        if (accountsLeft > 1)
+        {
+            return;
+        }
+
+        var previousUser = await context.Users.SingleAsync(x => x.Id == previousUserId, cancellationToken);
+        previousUser.MergedIntoUserId = userId;
+        previousUser.MergedAt = dateTimeProvider.UtcNow;
     }
 
     private async Task EnsureUserExistsAsync(Guid userId, CancellationToken cancellationToken)
