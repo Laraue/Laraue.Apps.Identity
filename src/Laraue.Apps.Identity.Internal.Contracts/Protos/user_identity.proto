@@ -38,6 +38,14 @@ service UserIdentityService {
 
   // Google counterpart of LinkTelegramAccount, keyed by the verified ID token's `sub` claim.
   rpc LinkGoogleAccount (LinkGoogleAccountRequest) returns (LinkAccountResponse);
+
+  // Returns a global user's own profile (user name, given/family name, and the display name and
+  // initials derived from them). It's filled once from the
+  // account the user was created with - never a mix of a Telegram and a Google account - and isn't
+  // changed by later account refreshes or links. This service is the source of truth for it -
+  // callers read it here instead of keeping their own copy. A read only: the calling service isn't
+  // recorded as used. Fails with NOT_FOUND for an unknown user_id.
+  rpc GetUserProfile (GetUserProfileRequest) returns (GetUserProfileResponse);
 }
 
 enum ServiceId {
@@ -114,4 +122,23 @@ message LinkAccountResponse {
   LinkAccountResult result = 1;
   // The account's previous owner, for MOVED and OWNER_USED_BY_ANOTHER_SERVICE.
   optional string previous_user_id = 2;
+}
+
+message GetUserProfileRequest {
+  // The global user id (GUID, string form).
+  string user_id = 1;
+}
+
+message GetUserProfileResponse {
+  // A Telegram username; unset for a user created with Google.
+  optional string user_name = 1;
+  // Telegram first/last name or Google given/family name. For a Google account with no given/family
+  // name, given_name holds its full name or, failing that, the email's local part.
+  optional string given_name = 2;
+  optional string family_name = 3;
+  // The user name if set, otherwise "given family", otherwise whichever of the two is set, otherwise
+  // "Unknown". Always set.
+  string display_name = 4;
+  // Up to two upper-case letters matching display_name. Always set.
+  string initials = 5;
 }

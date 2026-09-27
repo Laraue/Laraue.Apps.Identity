@@ -56,6 +56,16 @@ public enum LinkAccountOutcome
 /// </param>
 public sealed record LinkAccountResult(LinkAccountOutcome Outcome, Guid? PreviousUserId = null);
 
+/// <summary>
+/// A global user's own profile - see <see cref="User.UserName"/>.
+/// </summary>
+public sealed record UserProfile(
+    string? UserName,
+    string? GivenName,
+    string? FamilyName,
+    string DisplayName,
+    string Initials);
+
 public interface IUserIdentityService
 {
     /// <summary>
@@ -108,6 +118,12 @@ public interface IUserIdentityService
         string googleSubject,
         GoogleProfile profile,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns <paramref name="userId"/>'s own profile (see <see cref="User.UserName"/>). Throws
+    /// <see cref="NotFoundException"/> for an unknown user.
+    /// </summary>
+    Task<UserProfile> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken);
 }
 
 public class UserIdentityService(DatabaseContext context, IDateTimeProvider dateTimeProvider) : IUserIdentityService
@@ -197,6 +213,15 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
             : new LinkAccountResult(LinkAccountOutcome.Moved, previousUserId);
+    }
+
+    public async Task<UserProfile> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        return await context.Users
+            .Where(x => x.Id == userId)
+            .Select(x => new UserProfile(x.UserName, x.GivenName, x.FamilyName, x.DisplayName, x.Initials))
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
     }
 
     public async Task<LinkAccountResult> LinkGoogleAccountAsync(
@@ -324,7 +349,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
             return existingAccount.UserId;
         }
 
-        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = dateTimeProvider.UtcNow };
+        var newUser = CreateUser(profile.UserName, profile.FirstName, profile.LastName);
         var newAccount = new TelegramAccount
         {
             TelegramId = telegramId,
@@ -355,6 +380,33 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         }
     }
 
+    /// <summary>
+    /// A new user with their own profile filled from the account they're created with - see
+    /// <see cref="User.UserName"/>. Names longer than <see cref="User.NameMaxLength"/> are cut to it.
+    /// </summary>
+    private User CreateUser(string? userName, string? givenName, string? familyName)
+    {
+        givenName = TruncateName(givenName);
+        familyName = TruncateName(familyName);
+        var displayName = UserDisplayName.From(userName, givenName, familyName);
+
+        return new User
+        {
+            Id = Guid.NewGuid(),
+            CreatedAt = dateTimeProvider.UtcNow,
+            UserName = userName,
+            GivenName = givenName,
+            FamilyName = familyName,
+            DisplayName = displayName.DisplayName,
+            Initials = displayName.Initials,
+        };
+    }
+
+    private static string? TruncateName(string? name)
+    {
+        return name?.Length > User.NameMaxLength ? name[..User.NameMaxLength] : name;
+    }
+
     private static void ApplyProfile(TelegramAccount account, TelegramProfile profile)
     {
         account.TelegramUserName = profile.UserName;
@@ -383,7 +435,11 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
             return existingAccount.UserId;
         }
 
-        var newUser = new User { Id = Guid.NewGuid(), CreatedAt = dateTimeProvider.UtcNow };
+        var hasSplitName = profile.GivenName is not null || profile.FamilyName is not null;
+        var newUser = CreateUser(
+            userName: null,
+            givenName: hasSplitName ? profile.GivenName : profile.Name ?? profile.Email?.Split('@')[0],
+            familyName: hasSplitName ? profile.FamilyName : null);
         var newAccount = new GoogleAccount
         {
             GoogleSubject = googleSubject,

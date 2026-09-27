@@ -40,6 +40,17 @@ sign-in account, `User.MergedIntoUserId`/`MergedAt` record which user they were 
 trail for support/analytics and for later token revocation); an owner who keeps their other account
 stays a regular user.
 
+**Profile** (BRD-220): `User.UserName`/`GivenName`/`FamilyName` are the user's own profile, filled
+once from the account the user is created with (Telegram username/first/last name; Google given/family
+name, or its full name / email local part as `GivenName` when it has no split name) and never
+overwritten by later account refreshes or links - so they can become user-editable independently of
+any account (no RPC for that yet). `DisplayName`/`Initials` are derived from them once, by
+`UserDisplayName.From` (user name, else "Given Family", else either one, else "Unknown"), and stored, so
+every caller shows the same name instead of deriving it its own way. `GetUserProfile` returns them all, so callers read the profile here
+instead of keeping their own copy (Boards derives a member's name in an organization from it when
+they join). A plain read - it doesn't record the calling service as used; `NOT_FOUND` for an unknown
+user. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
+
 **Not built yet - future stages, don't add speculatively**:
 - Merging two global users that both have data (moving everything from one into the other, with
   a "merged into" redirect for services that knew the old id) - today an account can only be moved
@@ -53,7 +64,8 @@ stays a regular user.
 
 ## Domain model
 
-- `User` - a global Laraue user identity (`Id` Guid, `CreatedAt`). Carries no credential itself -
+- `User` - a global Laraue user identity (`Id` Guid, `CreatedAt`, the user's own profile - see
+  "Profile" above). Carries no credential itself -
   see `TelegramAccount` below for how a user actually authenticates. Keeping credentials in their
   own table(s) rather than on `User` is what let a second login method (`GoogleAccount`, stage 2)
   be added without touching `User` or anything downstream of it.
@@ -94,7 +106,7 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
 - `src/Laraue.Apps.Identity.DataAccess` - EF Core `DatabaseContext`, entities, migrations, and the
   static seed data (`Data/ServicesData.cs`).
 - `src/Laraue.Apps.Identity.Internal.Contracts` - the `.proto` service-to-service contract
-  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`/`LinkTelegramAccount`/`LinkGoogleAccount`) plus its generated
+  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`/`LinkTelegramAccount`/`LinkGoogleAccount`/`GetUserProfile`) plus its generated
   stubs, built with `GrpcServices="Both"` so it ships both the client stub (for callers like
   `Laraue.Apps.Boards`) and the server base class from one package. `IsPackable=true` - published to
   NuGet.org as `Laraue.Apps.Identity.Internal.Contracts` via `.github/workflows/nuget-publish.yml`
