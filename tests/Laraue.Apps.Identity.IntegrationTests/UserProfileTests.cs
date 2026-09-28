@@ -196,8 +196,7 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             UserId = created.UserId,
             GivenName = " Augusta ",
             FamilyName = "King",
-            DisplayName = "Countess of Lovelace",
-            Initials = "cl",
+            DisplayName = "countess of Lovelace",
         });
         var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
 
@@ -205,8 +204,8 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
         Assert.Equal("ada", profile.UserName);
         Assert.Equal("Augusta", profile.GivenName);
         Assert.Equal("King", profile.FamilyName);
-        Assert.Equal("Countess of Lovelace", profile.DisplayName);
-        Assert.Equal("CL", profile.Initials);
+        Assert.Equal("countess of Lovelace", profile.DisplayName);
+        Assert.Equal("CO", profile.Initials);
     }
 
     [Fact]
@@ -226,23 +225,18 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             UserId = created.UserId,
             GivenName = "  ",
             DisplayName = "Ada",
-            Initials = "A",
         });
 
         Assert.False(profile.HasGivenName);
         Assert.False(profile.HasFamilyName);
         Assert.Equal("Ada", profile.DisplayName);
-        Assert.Equal("A", profile.Initials);
+        Assert.Equal("AD", profile.Initials);
     }
 
     [Theory]
-    [InlineData("", "AL")]
-    [InlineData("   ", "AL")]
-    [InlineData("Ada Lovelace", "")]
-    [InlineData("Ada Lovelace", "ALO")]
-    public async Task UpdateUserProfile_ShouldFailWithInvalidArgument_WhenDisplayNameOrInitialsAreInvalid(
-        string displayName,
-        string initials)
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpdateUserProfile_ShouldFailWithInvalidArgument_WhenDisplayNameIsBlank(string displayName)
     {
         using var testScope = host.CreateTestScope();
         var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
@@ -253,7 +247,6 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             {
                 UserId = created.UserId,
                 DisplayName = displayName,
-                Initials = initials,
             }).ResponseAsync);
 
         Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
@@ -276,7 +269,6 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
                 UserId = created.UserId,
                 GivenName = new string('a', 129),
                 DisplayName = new string('a', 258),
-                Initials = "AA",
             }).ResponseAsync);
         var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
 
@@ -297,7 +289,6 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             GivenName = new string('a', 128),
             FamilyName = new string('b', 128),
             DisplayName = new string('c', 257),
-            Initials = "AB",
         });
 
         Assert.Equal(new string('c', 257), profile.DisplayName);
@@ -314,7 +305,6 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             {
                 UserId = Guid.NewGuid().ToString(),
                 DisplayName = "Ada",
-                Initials = "AD",
             }).ResponseAsync);
 
         Assert.Equal(StatusCode.NotFound, exception.StatusCode);
@@ -331,7 +321,6 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
             {
                 UserId = "not-a-guid",
                 DisplayName = "Ada",
-                Initials = "AD",
             }).ResponseAsync);
 
         Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);

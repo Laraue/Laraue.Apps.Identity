@@ -18,8 +18,6 @@ public class User
     // GivenName + " " + FamilyName at their max length, the longest name DisplayName can be derived from.
     public const int DisplayNameMaxLength = 2 * NameMaxLength + 1;
 
-    public const int InitialsMaxLength = 2;
-
     public Guid Id { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -52,7 +50,7 @@ public class User
     public string DisplayName { get; set; } = string.Empty;
 
     /// <inheritdoc cref="DisplayName"/>
-    [MaxLength(InitialsMaxLength)]
+    [MaxLength(2)]
     public string Initials { get; set; } = string.Empty;
 
     /// <summary>

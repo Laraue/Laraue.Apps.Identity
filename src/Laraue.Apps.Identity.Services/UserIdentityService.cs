@@ -73,8 +73,7 @@ public sealed record UserProfile(
 public sealed record UserProfileUpdate(
     string? GivenName,
     string? FamilyName,
-    string DisplayName,
-    string Initials);
+    string DisplayName);
 
 public interface IUserIdentityService
 {
@@ -136,9 +135,10 @@ public interface IUserIdentityService
     Task<UserProfile> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Replaces <paramref name="userId"/>'s given/family name, display name and initials with
-    /// <paramref name="update"/>'s, stored as given (trimmed, blank names cleared, initials
-    /// upper-cased) - the display name isn't derived from the names again. Returns the updated
+    /// Replaces <paramref name="userId"/>'s given/family name and display name with
+    /// <paramref name="update"/>'s, stored as given (trimmed, blank names cleared) - the display name
+    /// isn't derived from the names again; the initials are derived from it
+    /// (<see cref="UserDisplayName.InitialsOf"/>). Returns the updated
     /// profile. Throws <see cref="BadRequestException"/> for an invalid value and
     /// <see cref="NotFoundException"/> for an unknown user.
     /// </summary>
@@ -254,8 +254,6 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         var givenName = NormalizeOptional(update.GivenName, nameof(update.GivenName), User.NameMaxLength);
         var familyName = NormalizeOptional(update.FamilyName, nameof(update.FamilyName), User.NameMaxLength);
         var displayName = NormalizeRequired(update.DisplayName, nameof(update.DisplayName), User.DisplayNameMaxLength);
-        var initials = NormalizeRequired(update.Initials, nameof(update.Initials), User.InitialsMaxLength)
-            .ToUpperInvariant();
 
         var user = await context.Users
             .Where(x => x.Id == userId)
@@ -265,7 +263,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         user.GivenName = givenName;
         user.FamilyName = familyName;
         user.DisplayName = displayName;
-        user.Initials = initials;
+        user.Initials = UserDisplayName.InitialsOf(displayName);
         await context.SaveChangesAsync(cancellationToken);
 
         return new UserProfile(user.UserName, user.GivenName, user.FamilyName, user.DisplayName, user.Initials);

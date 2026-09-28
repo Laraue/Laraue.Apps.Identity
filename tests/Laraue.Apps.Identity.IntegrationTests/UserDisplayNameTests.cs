@@ -24,4 +24,15 @@ public class UserDisplayNameTests
         Assert.Equal(displayName, result.DisplayName);
         Assert.Equal(initials, result.Initials);
     }
+
+    [Theory]
+    [InlineData("Ada Lovelace", "AL")]
+    [InlineData("countess  of Lovelace", "CO")]
+    [InlineData("ada", "AD")]
+    [InlineData("A", "A")]
+    [InlineData(" Ada ", "AD")]
+    public void InitialsOf_ShouldTakeFirstLettersOfFirstTwoWords_Always(string displayName, string initials)
+    {
+        Assert.Equal(initials, UserDisplayName.InitialsOf(displayName));
+    }
 }

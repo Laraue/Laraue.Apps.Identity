@@ -47,9 +47,9 @@ service UserIdentityService {
   // recorded as used. Fails with NOT_FOUND for an unknown user_id.
   rpc GetUserProfile (GetUserProfileRequest) returns (GetUserProfileResponse);
 
-  // Replaces a global user's own given/family name, display name and initials with the values given
-  // - the user editing their profile. Stored as given: the display name and initials aren't derived
-  // from the names again. The user name (a Telegram username) isn't editable and is kept. Returns the
+  // Replaces a global user's own given/family name and display name with the values given - the user
+  // editing their profile. Stored as given: the display name isn't derived from the names again. The
+  // initials are derived from the new display name. The user name (a Telegram username) isn't editable and is kept. Returns the
   // updated profile, as GetUserProfile would. Fails with NOT_FOUND for an unknown user_id and
   // INVALID_ARGUMENT for an invalid value.
   rpc UpdateUserProfile (UpdateUserProfileRequest) returns (GetUserProfileResponse);
@@ -158,6 +158,4 @@ message UpdateUserProfileRequest {
   optional string family_name = 3;
   // Required, up to 257 characters.
   string display_name = 4;
-  // Required, up to 2 characters; stored upper-case.
-  string initials = 5;
 }

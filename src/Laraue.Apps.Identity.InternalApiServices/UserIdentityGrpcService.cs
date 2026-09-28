@@ -129,8 +129,7 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
                 new UserProfileUpdate(
                     GivenName: request.HasGivenName ? request.GivenName : null,
                     FamilyName: request.HasFamilyName ? request.FamilyName : null,
-                    DisplayName: request.DisplayName,
-                    Initials: request.Initials),
+                    DisplayName: request.DisplayName),
                 context.CancellationToken);
         }
         catch (BadRequestException ex)

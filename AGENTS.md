@@ -50,13 +50,14 @@ every caller shows the same name instead of deriving it its own way. `GetUserPro
 instead of keeping their own copy (Boards derives a member's name in an organization from it when
 they join). A plain read - it doesn't record the calling service as used; `NOT_FOUND` for an unknown
 user.
-`UpdateUserProfile` (BRD-238) is the user editing it: given/family name, display name and initials
-are replaced with the values given and stored as-is (trimmed, blank names cleared, initials
-upper-cased) - `DisplayName`/`Initials` are *not* derived again, since the derived display name puts
-the user name first and editing only given/family name would change nothing visible. `UserName` (a
-Telegram username) isn't editable. Lengths are the columns' (`User.NameMaxLength`,
-`DisplayNameMaxLength`, `InitialsMaxLength`); display name and initials are required - an invalid value
-is `INVALID_ARGUMENT`. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
+`UpdateUserProfile` (BRD-238) is the user editing it: given/family name and display name are replaced
+with the values given and stored as-is (trimmed, blank names cleared) - `DisplayName` is *not* derived
+again, since the derived display name puts the user name first and editing only given/family name
+would change nothing visible. `Initials` aren't taken from the caller: they're derived from the new
+display name (`UserDisplayName.InitialsOf` - first letters of its first two words), so they always
+match it. `UserName` (a Telegram username) isn't editable. Lengths are the columns'
+(`User.NameMaxLength`, `DisplayNameMaxLength`); the display name is required - an invalid value is
+`INVALID_ARGUMENT`. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
 
 **Not built yet - future stages, don't add speculatively**:
 - Merging two global users that both have data (moving everything from one into the other, with
