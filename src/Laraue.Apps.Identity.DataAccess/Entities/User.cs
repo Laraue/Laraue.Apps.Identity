@@ -4,8 +4,8 @@ namespace Laraue.Apps.Identity.DataAccess.Entities;
 
 /// <summary>
 /// A global Laraue user identity, shared across every consuming service. The row itself carries no
-/// credential - see <see cref="TelegramAccount"/> (and, in a later stage, a Google account
-/// equivalent) for how a user actually authenticates.
+/// credential - see <see cref="TelegramAccount"/>/<see cref="GoogleAccount"/> for how a user actually
+/// authenticates.
 /// </summary>
 public class User
 {
@@ -61,4 +61,15 @@ public class User
     public Guid? MergedIntoUserId { get; set; }
 
     public DateTime? MergedAt { get; set; }
+
+    /// <summary>
+    /// The user's Telegram account, if linked. At most one per user - enforced by a unique index on
+    /// <see cref="Entities.TelegramAccount.UserId"/>, not only by account linking's own check.
+    /// </summary>
+    public TelegramAccount? TelegramAccount { get; set; }
+
+    /// <summary>
+    /// The user's Google account, if linked. At most one per user, same as <see cref="TelegramAccount"/>.
+    /// </summary>
+    public GoogleAccount? GoogleAccount { get; set; }
 }

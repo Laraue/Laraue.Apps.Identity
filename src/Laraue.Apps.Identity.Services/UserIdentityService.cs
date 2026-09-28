@@ -57,14 +57,17 @@ public enum LinkAccountOutcome
 public sealed record LinkAccountResult(LinkAccountOutcome Outcome, Guid? PreviousUserId = null);
 
 /// <summary>
-/// A global user's own profile - see <see cref="User.UserName"/>.
+/// A global user's own profile - see <see cref="User.UserName"/>. <paramref name="GoogleEmail"/> isn't part
+/// of it: it's the linked Google account's email, returned alongside so a caller can tell apart a user
+/// with no user name.
 /// </summary>
 public sealed record UserProfile(
     string? UserName,
     string? GivenName,
     string? FamilyName,
     string DisplayName,
-    string Initials);
+    string Initials,
+    string? GoogleEmail);
 
 /// <summary>
 /// The parts of a global user's own profile the user can change - see
@@ -241,7 +244,13 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
     {
         return await context.Users
             .Where(x => x.Id == userId)
-            .Select(x => new UserProfile(x.UserName, x.GivenName, x.FamilyName, x.DisplayName, x.Initials))
+            .Select(x => new UserProfile(
+                x.UserName,
+                x.GivenName,
+                x.FamilyName,
+                x.DisplayName,
+                x.Initials,
+                x.GoogleAccount!.Email))
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
     }
@@ -256,6 +265,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         var displayName = NormalizeRequired(update.DisplayName, nameof(update.DisplayName), User.DisplayNameMaxLength);
 
         var user = await context.Users
+            .Include(x => x.GoogleAccount)
             .Where(x => x.Id == userId)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
@@ -266,7 +276,13 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         user.Initials = UserDisplayName.InitialsOf(displayName);
         await context.SaveChangesAsync(cancellationToken);
 
-        return new UserProfile(user.UserName, user.GivenName, user.FamilyName, user.DisplayName, user.Initials);
+        return new UserProfile(
+            user.UserName,
+            user.GivenName,
+            user.FamilyName,
+            user.DisplayName,
+            user.Initials,
+            user.GoogleAccount?.Email);
     }
 
     private static string? NormalizeOptional(string? value, string fieldName, int maxLength)

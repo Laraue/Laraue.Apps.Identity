@@ -135,6 +135,62 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
     }
 
     [Fact]
+    public async Task GetUserProfile_ShouldReturnGoogleEmail_WhenUserWasCreatedWithGoogle()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var userId = await CreateGoogleUserAsync(client, new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-401",
+            Email = "ada@example.com",
+            GivenName = "Ada",
+        });
+
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = userId });
+
+        Assert.Equal("ada@example.com", profile.GoogleEmail);
+    }
+
+    [Fact]
+    public async Task GetUserProfile_ShouldReturnNoGoogleEmail_WhenUserHasNoGoogleAccount()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 402,
+            TelegramUsername = "ada",
+        });
+
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
+
+        Assert.False(profile.HasGoogleEmail);
+    }
+
+    [Fact]
+    public async Task GetUserProfile_ShouldReturnGoogleEmail_WhenGoogleAccountIsLinked()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 403,
+            TelegramUsername = "ada",
+        });
+        await client.LinkGoogleAccountAsync(new LinkGoogleAccountRequest
+        {
+            UserId = created.UserId,
+            GoogleSubject = "google-403",
+            Email = "ada@example.com",
+        });
+
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
+
+        Assert.Equal("ada", profile.UserName);
+        Assert.Equal("ada@example.com", profile.GoogleEmail);
+    }
+
+    [Fact]
     public async Task GetUserProfile_ShouldKeepNames_WhenAccountProfileIsRefreshed()
     {
         using var testScope = host.CreateTestScope();
@@ -206,6 +262,27 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
         Assert.Equal("King", profile.FamilyName);
         Assert.Equal("countess of Lovelace", profile.DisplayName);
         Assert.Equal("CO", profile.Initials);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldReturnGoogleEmail_WhenUserHasGoogleAccount()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var userId = await CreateGoogleUserAsync(client, new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-404",
+            Email = "ada@example.com",
+            GivenName = "Ada",
+        });
+
+        var updated = await client.UpdateUserProfileAsync(new UpdateUserProfileRequest
+        {
+            UserId = userId,
+            DisplayName = "Countess",
+        });
+
+        Assert.Equal("ada@example.com", updated.GoogleEmail);
     }
 
     [Fact]
