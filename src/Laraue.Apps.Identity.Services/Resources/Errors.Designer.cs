@@ -85,5 +85,23 @@ namespace Laraue.Apps.Identity.Services.Resources {
                 return ResourceManager.GetString("UnknownService", resourceCulture);
             }
         }
+    
+        /// <summary>
+        ///   Looks up a localized string similar to {0} is required..
+        /// </summary>
+        internal static string ValueRequired {
+            get {
+                return ResourceManager.GetString("ValueRequired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} must be at most {1} characters..
+        /// </summary>
+        internal static string ValueTooLong {
+            get {
+                return ResourceManager.GetString("ValueTooLong", resourceCulture);
+            }
+        }
     }
 }

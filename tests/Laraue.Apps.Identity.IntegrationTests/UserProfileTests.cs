@@ -179,6 +179,153 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
         Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
     }
 
+    [Fact]
+    public async Task UpdateUserProfile_ShouldStoreValuesAsGiven_WhenValuesAreValid()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 301,
+            TelegramUsername = "ada",
+            TelegramFirstName = "Ada",
+        });
+
+        var updated = await client.UpdateUserProfileAsync(new UpdateUserProfileRequest
+        {
+            UserId = created.UserId,
+            GivenName = " Augusta ",
+            FamilyName = "King",
+            DisplayName = "countess of Lovelace",
+        });
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
+
+        Assert.Equal(updated, profile);
+        Assert.Equal("ada", profile.UserName);
+        Assert.Equal("Augusta", profile.GivenName);
+        Assert.Equal("King", profile.FamilyName);
+        Assert.Equal("countess of Lovelace", profile.DisplayName);
+        Assert.Equal("CO", profile.Initials);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldClearNames_WhenNamesAreUnsetOrBlank()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 302,
+            TelegramFirstName = "Ada",
+            TelegramLastName = "Lovelace",
+        });
+
+        var profile = await client.UpdateUserProfileAsync(new UpdateUserProfileRequest
+        {
+            UserId = created.UserId,
+            GivenName = "  ",
+            DisplayName = "Ada",
+        });
+
+        Assert.False(profile.HasGivenName);
+        Assert.False(profile.HasFamilyName);
+        Assert.Equal("Ada", profile.DisplayName);
+        Assert.Equal("AD", profile.Initials);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpdateUserProfile_ShouldFailWithInvalidArgument_WhenDisplayNameIsBlank(string displayName)
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 303 });
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.UpdateUserProfileAsync(
+            new UpdateUserProfileRequest
+            {
+                UserId = created.UserId,
+                DisplayName = displayName,
+            }).ResponseAsync);
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldFailWithInvalidArgument_WhenNamesAreTooLong()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 304,
+            TelegramFirstName = "Ada",
+        });
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.UpdateUserProfileAsync(
+            new UpdateUserProfileRequest
+            {
+                UserId = created.UserId,
+                GivenName = new string('a', 129),
+                DisplayName = new string('a', 258),
+            }).ResponseAsync);
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
+        Assert.Equal("Ada", profile.GivenName);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldAcceptMaxLengths_WhenValuesAreAtTheLimit()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 305 });
+
+        var profile = await client.UpdateUserProfileAsync(new UpdateUserProfileRequest
+        {
+            UserId = created.UserId,
+            GivenName = new string('a', 128),
+            FamilyName = new string('b', 128),
+            DisplayName = new string('c', 257),
+        });
+
+        Assert.Equal(new string('c', 257), profile.DisplayName);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldFailWithNotFound_WhenUserIsUnknown()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.UpdateUserProfileAsync(
+            new UpdateUserProfileRequest
+            {
+                UserId = Guid.NewGuid().ToString(),
+                DisplayName = "Ada",
+            }).ResponseAsync);
+
+        Assert.Equal(StatusCode.NotFound, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_ShouldFailWithInvalidArgument_WhenUserIdIsNotGuid()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.UpdateUserProfileAsync(
+            new UpdateUserProfileRequest
+            {
+                UserId = "not-a-guid",
+                DisplayName = "Ada",
+            }).ResponseAsync);
+
+        Assert.Equal(StatusCode.InvalidArgument, exception.StatusCode);
+    }
+
     private static async Task<string> CreateGoogleUserAsync(
         UserIdentityService.UserIdentityServiceClient client,
         CreateUserIfNotExistsByGoogleRequest request)

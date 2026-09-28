@@ -22,5 +22,17 @@ public sealed record UserDisplayName(string DisplayName, string Initials)
         return new UserDisplayName(displayName, initials.ToUpperInvariant());
     }
 
+    /// <summary>
+    /// Initials of a display name the user set themselves: the first letters of its first two words,
+    /// or the first two letters of a single word, upper-cased.
+    /// </summary>
+    public static string InitialsOf(string displayName)
+    {
+        var words = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var initials = words.Length > 1 ? $"{words[0][0]}{words[1][0]}" : FirstLetters(words[0]);
+
+        return initials.ToUpperInvariant();
+    }
+
     private static string FirstLetters(string name) => name.Length > 1 ? name[..2] : name;
 }

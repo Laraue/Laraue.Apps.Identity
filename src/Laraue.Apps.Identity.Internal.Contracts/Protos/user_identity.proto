@@ -46,6 +46,13 @@ service UserIdentityService {
   // callers read it here instead of keeping their own copy. A read only: the calling service isn't
   // recorded as used. Fails with NOT_FOUND for an unknown user_id.
   rpc GetUserProfile (GetUserProfileRequest) returns (GetUserProfileResponse);
+
+  // Replaces a global user's own given/family name and display name with the values given - the user
+  // editing their profile. Stored as given: the display name isn't derived from the names again. The
+  // initials are derived from the new display name. The user name (a Telegram username) isn't editable and is kept. Returns the
+  // updated profile, as GetUserProfile would. Fails with NOT_FOUND for an unknown user_id and
+  // INVALID_ARGUMENT for an invalid value.
+  rpc UpdateUserProfile (UpdateUserProfileRequest) returns (GetUserProfileResponse);
 }
 
 enum ServiceId {
@@ -141,4 +148,14 @@ message GetUserProfileResponse {
   string display_name = 4;
   // Up to two upper-case letters matching display_name. Always set.
   string initials = 5;
+}
+
+message UpdateUserProfileRequest {
+  // The global user id (GUID, string form).
+  string user_id = 1;
+  // Up to 128 characters each. Unset or blank clears the name.
+  optional string given_name = 2;
+  optional string family_name = 3;
+  // Required, up to 257 characters.
+  string display_name = 4;
 }

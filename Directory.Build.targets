@@ -3,7 +3,7 @@
     <When Condition="$(IsPackable) == true">
       <!-- Package License Information -->
       <PropertyGroup>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
       </PropertyGroup>
       <ItemGroup>

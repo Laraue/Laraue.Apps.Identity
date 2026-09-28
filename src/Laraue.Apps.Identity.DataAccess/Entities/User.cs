@@ -15,6 +15,9 @@ public class User
     /// </summary>
     public const int NameMaxLength = 128;
 
+    // GivenName + " " + FamilyName at their max length, the longest name DisplayName can be derived from.
+    public const int DisplayNameMaxLength = 2 * NameMaxLength + 1;
+
     public Guid Id { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -40,10 +43,10 @@ public class User
     /// <summary>
     /// How the user is shown, derived from <see cref="UserName"/>/<see cref="GivenName"/>/
     /// <see cref="FamilyName"/> when they're set (see <c>UserDisplayName</c> in Services) and stored,
-    /// so callers show the same name without each deriving it their own way.
+    /// so callers show the same name without each deriving it their own way. The user can then change
+    /// it (<c>UpdateUserProfile</c>) - stored as given, not derived again.
     /// </summary>
-    // 257 = GivenName + " " + FamilyName at their max length, the longest name it can be derived from.
-    [MaxLength(2 * NameMaxLength + 1)]
+    [MaxLength(DisplayNameMaxLength)]
     public string DisplayName { get; set; } = string.Empty;
 
     /// <inheritdoc cref="DisplayName"/>

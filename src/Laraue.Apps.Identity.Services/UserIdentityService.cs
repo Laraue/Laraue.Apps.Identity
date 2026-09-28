@@ -66,6 +66,15 @@ public sealed record UserProfile(
     string DisplayName,
     string Initials);
 
+/// <summary>
+/// The parts of a global user's own profile the user can change - see
+/// <see cref="IUserIdentityService.UpdateUserProfileAsync"/>.
+/// </summary>
+public sealed record UserProfileUpdate(
+    string? GivenName,
+    string? FamilyName,
+    string DisplayName);
+
 public interface IUserIdentityService
 {
     /// <summary>
@@ -124,6 +133,19 @@ public interface IUserIdentityService
     /// <see cref="NotFoundException"/> for an unknown user.
     /// </summary>
     Task<UserProfile> GetUserProfileAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces <paramref name="userId"/>'s given/family name and display name with
+    /// <paramref name="update"/>'s, stored as given (trimmed, blank names cleared) - the display name
+    /// isn't derived from the names again; the initials are derived from it
+    /// (<see cref="UserDisplayName.InitialsOf"/>). Returns the updated
+    /// profile. Throws <see cref="BadRequestException"/> for an invalid value and
+    /// <see cref="NotFoundException"/> for an unknown user.
+    /// </summary>
+    Task<UserProfile> UpdateUserProfileAsync(
+        Guid userId,
+        UserProfileUpdate update,
+        CancellationToken cancellationToken);
 }
 
 public class UserIdentityService(DatabaseContext context, IDateTimeProvider dateTimeProvider) : IUserIdentityService
@@ -222,6 +244,48 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
             .Select(x => new UserProfile(x.UserName, x.GivenName, x.FamilyName, x.DisplayName, x.Initials))
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
+    }
+
+    public async Task<UserProfile> UpdateUserProfileAsync(
+        Guid userId,
+        UserProfileUpdate update,
+        CancellationToken cancellationToken)
+    {
+        var givenName = NormalizeOptional(update.GivenName, nameof(update.GivenName), User.NameMaxLength);
+        var familyName = NormalizeOptional(update.FamilyName, nameof(update.FamilyName), User.NameMaxLength);
+        var displayName = NormalizeRequired(update.DisplayName, nameof(update.DisplayName), User.DisplayNameMaxLength);
+
+        var user = await context.Users
+            .Where(x => x.Id == userId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException(string.Format(Errors.UserNotFound, userId));
+
+        user.GivenName = givenName;
+        user.FamilyName = familyName;
+        user.DisplayName = displayName;
+        user.Initials = UserDisplayName.InitialsOf(displayName);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return new UserProfile(user.UserName, user.GivenName, user.FamilyName, user.DisplayName, user.Initials);
+    }
+
+    private static string? NormalizeOptional(string? value, string fieldName, int maxLength)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        return value.Length <= maxLength
+            ? value
+            : throw new BadRequestException(fieldName, string.Format(Errors.ValueTooLong, fieldName, maxLength));
+    }
+
+    private static string NormalizeRequired(string? value, string fieldName, int maxLength)
+    {
+        return NormalizeOptional(value, fieldName, maxLength)
+            ?? throw new BadRequestException(fieldName, string.Format(Errors.ValueRequired, fieldName));
     }
 
     public async Task<LinkAccountResult> LinkGoogleAccountAsync(
