@@ -66,3 +66,13 @@ when the test host starts, same as the real service.
 ```
 dotnet test tests/Laraue.Apps.Identity.IntegrationTests
 ```
+
+## License
+
+Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only), including the
+`Laraue.Apps.Identity.Internal.Contracts` NuGet package. You're free to use, modify and self-host it,
+for personal or any other use, as long as you follow the AGPL - in particular, if you run a modified
+version as a network service, you must make your modified source available to its users.
+
+A commercial license without the AGPL obligations is available on request - contact the author via
+[GitHub](https://github.com/win7user10).
