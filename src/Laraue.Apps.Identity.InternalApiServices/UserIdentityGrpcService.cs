@@ -98,6 +98,36 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         return ToLinkAccountResponse(result);
     }
 
+    public override async Task<Internal.Contracts.GetUserProfileResponse> GetUserProfile(
+        Internal.Contracts.GetUserProfileRequest request,
+        ServerCallContext context)
+    {
+        UserProfile profile;
+
+        try
+        {
+            profile = await userIdentityService.GetUserProfileAsync(ParseUserId(request.UserId), context.CancellationToken);
+        }
+        catch (NotFoundException ex)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+        }
+
+        var response = new Internal.Contracts.GetUserProfileResponse
+        {
+            DisplayName = profile.DisplayName,
+            Initials = profile.Initials,
+        };
+        if (profile.UserName is not null)
+            response.UserName = profile.UserName;
+        if (profile.GivenName is not null)
+            response.GivenName = profile.GivenName;
+        if (profile.FamilyName is not null)
+            response.FamilyName = profile.FamilyName;
+
+        return response;
+    }
+
     private static async Task<LinkAccountResult> ExecuteLinkAsync(Func<Task<LinkAccountResult>> link)
     {
         try
