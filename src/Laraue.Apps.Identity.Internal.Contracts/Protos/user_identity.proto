@@ -148,6 +148,9 @@ message GetUserProfileResponse {
   string display_name = 4;
   // Up to two upper-case letters matching display_name. Always set.
   string initials = 5;
+  // The linked Google account's email, as Google last reported it; unset when the user has no Google
+  // account. Not part of the editable profile - UpdateUserProfile returns it unchanged.
+  optional string google_email = 6;
 }
 
 message UpdateUserProfileRequest {

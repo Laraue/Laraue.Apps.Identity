@@ -157,6 +157,8 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
             response.GivenName = profile.GivenName;
         if (profile.FamilyName is not null)
             response.FamilyName = profile.FamilyName;
+        if (profile.GoogleEmail is not null)
+            response.GoogleEmail = profile.GoogleEmail;
 
         return response;
     }

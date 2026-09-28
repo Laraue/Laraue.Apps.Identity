@@ -58,6 +58,11 @@ display name (`UserDisplayName.InitialsOf` - first letters of its first two word
 match it. `UserName` (a Telegram username) isn't editable. Lengths are the columns'
 (`User.NameMaxLength`, `DisplayNameMaxLength`); the display name is required - an invalid value is
 `INVALID_ARGUMENT`. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
+`GetUserProfile`/`UpdateUserProfile` also return the linked Google account's `google_email` (BRD-223, unset
+without one) - not part of the profile or editable, just read from `GoogleAccount`, so a caller can
+tell apart a Google-only user, who has no user name (first consumer: the feedback service's Telegram
+notifications). Other per-account data (Telegram id, language) isn't returned - add it when a caller
+needs it.
 
 **Not built yet - future stages, don't add speculatively**:
 - Merging two global users that both have data (moving everything from one into the other, with
@@ -95,6 +100,11 @@ match it. `UserName` (a Telegram username) isn't editable. Lengths are the colum
   token's `sub` claim - stable and never reused, unlike `Email`, which the account owner can
   change). Profile fields (`Email`/`Name`/`GivenName`/`FamilyName`) use the ID token's standard
   claim names and are refreshed on every call, same as `TelegramAccount`'s.
+- At most one `TelegramAccount` and one `GoogleAccount` per user: `User.TelegramAccount`/
+  `User.GoogleAccount` are one-to-one navigations, backed by unique indexes on each table's `user_id`
+  (BRD-223). Account linking checks this itself and returns "already has another account", so the
+  index only matters for a concurrent link, which now fails instead of leaving the user with two
+  accounts of one kind.
 - `Service` - a consuming app (`LaraueBoards`, `LearnLanguage`), identified by its own `ServiceId`
   enum. This is a deliberately independent registry from `Laraue.Apps.Billing`'s own `ServiceId`
   enum - the two services aren't schema-coupled, even though the numeric values happen to start the
