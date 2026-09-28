@@ -44,12 +44,19 @@ stays a regular user.
 once from the account the user is created with (Telegram username/first/last name; Google given/family
 name, or its full name / email local part as `GivenName` when it has no split name) and never
 overwritten by later account refreshes or links - so they can become user-editable independently of
-any account (no RPC for that yet). `DisplayName`/`Initials` are derived from them once, by
+any account. `DisplayName`/`Initials` are derived from them once, by
 `UserDisplayName.From` (user name, else "Given Family", else either one, else "Unknown"), and stored, so
 every caller shows the same name instead of deriving it its own way. `GetUserProfile` returns them all, so callers read the profile here
 instead of keeping their own copy (Boards derives a member's name in an organization from it when
 they join). A plain read - it doesn't record the calling service as used; `NOT_FOUND` for an unknown
-user. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
+user.
+`UpdateUserProfile` (BRD-238) is the user editing it: given/family name, display name and initials
+are replaced with the values given and stored as-is (trimmed, blank names cleared, initials
+upper-cased) - `DisplayName`/`Initials` are *not* derived again, since the derived display name puts
+the user name first and editing only given/family name would change nothing visible. `UserName` (a
+Telegram username) isn't editable. Lengths are the columns' (`User.NameMaxLength`,
+`DisplayNameMaxLength`, `InitialsMaxLength`); display name and initials are required - an invalid value
+is `INVALID_ARGUMENT`. Account profile fields (`TelegramAccount`/`GoogleAccount`) stay what the provider last reported.
 
 **Not built yet - future stages, don't add speculatively**:
 - Merging two global users that both have data (moving everything from one into the other, with
@@ -106,7 +113,7 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
 - `src/Laraue.Apps.Identity.DataAccess` - EF Core `DatabaseContext`, entities, migrations, and the
   static seed data (`Data/ServicesData.cs`).
 - `src/Laraue.Apps.Identity.Internal.Contracts` - the `.proto` service-to-service contract
-  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`/`LinkTelegramAccount`/`LinkGoogleAccount`/`GetUserProfile`) plus its generated
+  (`Protos/user_identity.proto`, `UserIdentityService.CreateUserIfNotExists`/`CreateUserIfNotExistsByGoogle`/`LinkTelegramAccount`/`LinkGoogleAccount`/`GetUserProfile`/`UpdateUserProfile`) plus its generated
   stubs, built with `GrpcServices="Both"` so it ships both the client stub (for callers like
   `Laraue.Apps.Boards`) and the server base class from one package. `IsPackable=true` - published to
   NuGet.org as `Laraue.Apps.Identity.Internal.Contracts` via `.github/workflows/nuget-publish.yml`

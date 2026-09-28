@@ -113,6 +113,40 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
             throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
         }
 
+        return ToGetUserProfileResponse(profile);
+    }
+
+    public override async Task<Internal.Contracts.GetUserProfileResponse> UpdateUserProfile(
+        Internal.Contracts.UpdateUserProfileRequest request,
+        ServerCallContext context)
+    {
+        UserProfile profile;
+
+        try
+        {
+            profile = await userIdentityService.UpdateUserProfileAsync(
+                ParseUserId(request.UserId),
+                new UserProfileUpdate(
+                    GivenName: request.HasGivenName ? request.GivenName : null,
+                    FamilyName: request.HasFamilyName ? request.FamilyName : null,
+                    DisplayName: request.DisplayName,
+                    Initials: request.Initials),
+                context.CancellationToken);
+        }
+        catch (BadRequestException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+        catch (NotFoundException ex)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+        }
+
+        return ToGetUserProfileResponse(profile);
+    }
+
+    private static Internal.Contracts.GetUserProfileResponse ToGetUserProfileResponse(UserProfile profile)
+    {
         var response = new Internal.Contracts.GetUserProfileResponse
         {
             DisplayName = profile.DisplayName,
