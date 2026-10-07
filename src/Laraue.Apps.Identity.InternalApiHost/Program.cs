@@ -1,5 +1,6 @@
 using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.InternalApiServices;
+using Laraue.Apps.Identity.Services.Metrics;
 using Laraue.Grpc.OpenTelemetry;
 using Laraue.Grpc.Server;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -39,6 +40,7 @@ public sealed class Program
 
         builder.Services.AddLaraueGrpcTelemetry(
             configureMetrics: metrics => metrics
+                .AddMeter(IdentityMetrics.MeterName)
                 .AddAspNetCoreInstrumentation()
                 .AddRuntimeInstrumentation()
                 .AddPrometheusExporter());

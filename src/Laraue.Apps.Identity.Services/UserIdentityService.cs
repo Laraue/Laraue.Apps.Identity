@@ -1,5 +1,6 @@
 ﻿using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.DataAccess.Entities;
+using Laraue.Apps.Identity.Services.Metrics;
 using Laraue.Apps.Identity.Services.Resources;
 using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.Exceptions.Web;
@@ -151,7 +152,10 @@ public interface IUserIdentityService
         CancellationToken cancellationToken);
 }
 
-public class UserIdentityService(DatabaseContext context, IDateTimeProvider dateTimeProvider) : IUserIdentityService
+public class UserIdentityService(
+    DatabaseContext context,
+    IDateTimeProvider dateTimeProvider,
+    IdentityMetrics metrics) : IUserIdentityService
 {
     public async Task<Guid> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
@@ -161,7 +165,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
     {
         EnsureServiceIsKnown(serviceId);
 
-        var userId = await GetOrCreateUserIdAsync(telegramId, profile, cancellationToken);
+        var userId = await GetOrCreateUserIdAsync(serviceId, telegramId, profile, cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
 
@@ -181,7 +185,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
             throw new BadRequestException(nameof(googleSubject), Errors.GoogleSubjectRequired);
         }
 
-        var userId = await GetOrCreateUserIdByGoogleAsync(googleSubject, profile, cancellationToken);
+        var userId = await GetOrCreateUserIdByGoogleAsync(serviceId, googleSubject, profile, cancellationToken);
 
         await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
 
@@ -189,6 +193,19 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
     }
 
     public async Task<LinkAccountResult> LinkTelegramAccountAsync(
+        ServiceId serviceId,
+        Guid userId,
+        long telegramId,
+        TelegramProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var result = await LinkTelegramAccountCoreAsync(serviceId, userId, telegramId, profile, cancellationToken);
+        metrics.RecordAccountLinked(IdentityMetrics.MethodTelegram, result.Outcome);
+
+        return result;
+    }
+
+    private async Task<LinkAccountResult> LinkTelegramAccountCoreAsync(
         ServiceId serviceId,
         Guid userId,
         long telegramId,
@@ -311,6 +328,19 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         GoogleProfile profile,
         CancellationToken cancellationToken)
     {
+        var result = await LinkGoogleAccountCoreAsync(serviceId, userId, googleSubject, profile, cancellationToken);
+        metrics.RecordAccountLinked(IdentityMetrics.MethodGoogle, result.Outcome);
+
+        return result;
+    }
+
+    private async Task<LinkAccountResult> LinkGoogleAccountCoreAsync(
+        ServiceId serviceId,
+        Guid userId,
+        string googleSubject,
+        GoogleProfile profile,
+        CancellationToken cancellationToken)
+    {
         EnsureServiceIsKnown(serviceId);
 
         if (string.IsNullOrWhiteSpace(googleSubject))
@@ -414,6 +444,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
     /// writes <paramref name="profile"/> onto the <see cref="TelegramAccount"/> row.
     /// </summary>
     private async Task<Guid> GetOrCreateUserIdAsync(
+        ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
         CancellationToken cancellationToken)
@@ -444,6 +475,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         try
         {
             await context.SaveChangesAsync(cancellationToken);
+            metrics.RecordUserRegistered(IdentityMetrics.MethodTelegram, serviceId);
             return newUser.Id;
         }
         catch (DbUpdateException)
@@ -500,6 +532,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
     /// handling for two concurrent first logins with the same Google account.
     /// </summary>
     private async Task<Guid> GetOrCreateUserIdByGoogleAsync(
+        ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
         CancellationToken cancellationToken)
@@ -534,6 +567,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         try
         {
             await context.SaveChangesAsync(cancellationToken);
+            metrics.RecordUserRegistered(IdentityMetrics.MethodGoogle, serviceId);
             return newUser.Id;
         }
         catch (DbUpdateException)
@@ -581,6 +615,7 @@ public class UserIdentityService(DatabaseContext context, IDateTimeProvider date
         try
         {
             await context.SaveChangesAsync(cancellationToken);
+            metrics.RecordServiceUserAdded(serviceId);
         }
         catch (DbUpdateException)
         {
