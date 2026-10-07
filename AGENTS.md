@@ -174,6 +174,24 @@ InternalApiHost note below) directly, only through its own `Host{Services}` proj
   (no-tracking) `DatabaseContext` for direct assertions. Test classes are marked
   `[Collection("IntegrationTest")]` so they never run in parallel against the shared test database.
 
+## Metrics
+
+Prometheus metrics on `InternalApiHost`'s `/_metrics` (health port), `System.Diagnostics.Metrics`, meter
+`Laraue.Apps.Identity` (BRD-274). Same conventions as Billing's "Metrics" section.
+
+- **Naming**: dotted `identity.<noun>.<verb or state>`; the exporter makes counters `identity_<noun>_<verb>_total`.
+  A new counter goes into `IdentityMetrics` (`Services/Metrics`) with a typed `Record...` method.
+- **Counters are events**, recorded after the row is saved (a lost insert race records nothing):
+  `identity_users_registered_total{method,service}` (method telegram|google, service = the caller the user signed up
+  from), `identity_service_users_added_total{service}` (a user's first call from a service, new or existing user),
+  `identity_accounts_linked_total{provider,outcome}`.
+- **Gauges are state**, read from the database so they survive a restart (`IdentityStateMetrics` in
+  `InternalApiServices`, refreshed every 30 s): `identity_users` (total, absorbed users excluded),
+  `identity_users_by_source{source}` (telegram only | google only | both), `identity_service_users{service}` (a user of
+  several services counts in each). Plot them over time for growth; with replicas use `max()`.
+- **Labels are low-cardinality**: method, provider, service, source, outcome. Never a user or account id.
+- **Tests** scrape `/_metrics` (`IdentityMetricsTests`); the test host turns the exporter's scrape cache off.
+
 ## EF Core
 
 - Snake_case naming convention (`.UseSnakeCaseNamingConvention()` in `InternalApiHost/Program.cs`),
