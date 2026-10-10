@@ -61,7 +61,7 @@ jobs:
             artifact: internal-api-host
             archive: internal-api-host.tar.gz
             remote_dir: /home/laraue/identity-internal-api-host
-            image: identityinternalapihost
+            image: identity-internal-api-host
             environment: internalapi-production
     environment: ${{ matrix.environment }}
     steps:
