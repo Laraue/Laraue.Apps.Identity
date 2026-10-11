@@ -224,7 +224,7 @@ first if there's any ambiguity.
 
 `.github/workflows/dotnet.yml`'s `deploy` job packs `InternalApiHost`'s publish output, scp's it to
 `/home/laraue/identity-internal-api-host` on the deploy server, then runs `docker compose build
-identityinternalapihost` / `docker compose up -d --force-recreate identityinternalapihost` there -
+identity-internal-api-host` / `docker compose up -d --force-recreate identity-internal-api-host` there -
 same shape as Billing/Boards' `deploy` jobs (see those repos' `dotnet.yml` if you need the fuller
 pattern), runs only on push to `main`, one matrix entry.
 
@@ -236,7 +236,7 @@ later, this is the pattern to copy instead of Billing's (nonexistent) one.
 
 **Prerequisites this repo's CI does *not* set up itself** (all on the GitHub repo, done once, by a
 human, not by this workflow):
-- A `docker-compose.yml` service block named `identityinternalapihost` on the deploy server itself,
+- A `docker-compose.yml` service block named `identity-internal-api-host` on the deploy server itself,
   with a build context at `/home/laraue/identity-internal-api-host` (where CI uploads the published
   binaries) - this repo doesn't own or contain that file.
 - A GitHub Environment named `internalapi-production` (Settings -> Environments) - the job's
