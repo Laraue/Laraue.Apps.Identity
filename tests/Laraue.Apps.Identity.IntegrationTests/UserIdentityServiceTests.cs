@@ -1,4 +1,4 @@
-using Grpc.Core;
+﻿using Grpc.Core;
 using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +90,40 @@ public class UserIdentityServiceTests(InternalApiTestHost host) : IClassFixture<
         Assert.Equal("NewFirst", account.TelegramFirstName);
         Assert.Equal("NewLast", account.TelegramLastName);
         Assert.Equal("en", account.TelegramLanguageCode);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExists_ShouldCreateUser_WhenLanguageCodeIsLongerThanTwoLetters()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 5,
+            TelegramLanguageCode = "pt-br",
+        });
+
+        var account = await testScope.Database.TelegramAccounts.SingleAsync(x => x.TelegramId == 5);
+
+        Assert.Equal("pt-br", account.TelegramLanguageCode);
+    }
+
+    [Fact]
+    public async Task CreateUserIfNotExists_ShouldFailWithSaveError_WhenNewAccountIsRejectedNotByRace()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => client.CreateUserIfNotExistsAsync(
+            new CreateUserIfNotExistsRequest
+            {
+                TelegramId = 6,
+                TelegramUsername = new string('a', 33),
+            }).ResponseAsync);
+
+        Assert.Contains(nameof(DbUpdateException), exception.Status.Detail);
+        Assert.False(await testScope.Database.Users.AnyAsync());
     }
 
     [Fact]

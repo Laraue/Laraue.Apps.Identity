@@ -121,8 +121,8 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnName("telegram_first_name");
 
                     b.Property<string>("TelegramLanguageCode")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)")
                         .HasColumnName("telegram_language_code");
 
                     b.Property<string>("TelegramLastName")

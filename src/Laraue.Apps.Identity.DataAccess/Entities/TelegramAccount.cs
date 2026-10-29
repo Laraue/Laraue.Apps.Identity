@@ -28,7 +28,12 @@ public class TelegramAccount
     [MaxLength(64)]
     public string? TelegramLastName { get; set; }
 
-    [MaxLength(2)]
+    /// <summary>
+    /// Telegram's <c>language_code</c> as sent: an IETF language tag, not always two letters
+    /// (<c>pt-br</c>, <c>zh-hans</c>), so wider than <c>ITelegramUser</c>'s 2 (BRD-332). 35 is the
+    /// practical BCP 47 limit.
+    /// </summary>
+    [MaxLength(35)]
     public string? TelegramLanguageCode { get; set; }
 
     public DateTime CreatedAt { get; set; }
