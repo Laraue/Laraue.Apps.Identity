@@ -93,7 +93,8 @@ needs it.
   names/lengths (see that package's `ITelegramUser.cs`) for consistency with how the other Laraue
   apps model a Telegram user, even though this entity doesn't implement that interface itself (its
   "system id" concept is the separate `UserId` FK, not its own PK, so the interface's `Id`/`TKey`
-  shape doesn't map cleanly onto it). All optional, and refreshed on *every*
+  shape doesn't map cleanly onto it). One exception: `TelegramLanguageCode` is 35, not 2 - Telegram
+  sends an IETF tag (`pt-br`), which didn't fit and broke sign-up (BRD-332). All optional, and refreshed on *every*
   `CreateUserIfNotExists` call, not just when the row is first created - Telegram profiles change
   (username, display name) and this is meant to stay current, not just capture a first snapshot.
 - `GoogleAccount` - the Google counterpart of `TelegramAccount`. Keyed by `GoogleSubject` (the ID

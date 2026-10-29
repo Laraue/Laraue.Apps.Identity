@@ -5,6 +5,7 @@ using Laraue.Apps.Identity.Services.Resources;
 using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.Exceptions.Web;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 // UserIdentityService.cs (this business-logic class) shares its name with the DataAccess entity
 // UserService (user-uses-service link) - alias the entity to keep both unambiguous.
 using UserServiceEntity = Laraue.Apps.Identity.DataAccess.Entities.UserService;
@@ -478,7 +479,7 @@ public class UserIdentityService(
             metrics.RecordUserRegistered(IdentityMetrics.MethodTelegram, serviceId);
             return newUser.Id;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
             // Lost a race with a concurrent call for the same Telegram account - the unique
             // TelegramId key rejected our insert. Drop our attempt and use whichever row won.
@@ -570,7 +571,7 @@ public class UserIdentityService(
             metrics.RecordUserRegistered(IdentityMetrics.MethodGoogle, serviceId);
             return newUser.Id;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
             // Lost a race with a concurrent call for the same Google account - the GoogleSubject
             // primary key rejected our insert. Drop our attempt and use whichever row won.
@@ -617,10 +618,20 @@ public class UserIdentityService(
             await context.SaveChangesAsync(cancellationToken);
             metrics.RecordServiceUserAdded(serviceId);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
             // Lost a race with a concurrent call recording the same (UserId, ServiceId) pair -
             // it's already recorded, which is all this method promises.
         }
+    }
+
+    /// <summary>
+    /// Whether a failed save was a lost insert race - a unique key rejecting the row. Only those are
+    /// retried; anything else (a value too long for its column, BRD-332) is a real error and must
+    /// reach the caller, not be read as "someone else's row won" and fail later on a missing row.
+    /// </summary>
+    private static bool IsUniqueViolation(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
     }
 }

@@ -1,3 +1,4 @@
+﻿using Grpc.AspNetCore.Server;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Laraue.Apps.Identity.DataAccess;
@@ -25,6 +26,11 @@ public class InternalApiTestHost : WebApplicationFactory<Program>
         // would read stale numbers.
         builder.ConfigureServices(services => services.Configure<PrometheusAspNetCoreOptions>(
             options => options.ScrapeResponseCacheDurationMilliseconds = 0));
+
+        // Puts the handler's exception type into the status detail, so a test can tell which error a
+        // failed call really hit.
+        builder.ConfigureServices(services => services.Configure<GrpcServiceOptions>(
+            options => options.EnableDetailedErrors = true));
 
         return base.CreateHost(builder);
     }
