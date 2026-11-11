@@ -90,7 +90,7 @@ public interface IUserIdentityService
     /// <paramref name="source"/> - where the user came to the service from - is kept only when this call records
     /// the service for the user the first time (<see cref="SignUpSource"/>).
     /// </summary>
-    Task<Guid> CreateUserIfNotExistsAsync(
+    Task<ServiceUser> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
@@ -104,7 +104,7 @@ public interface IUserIdentityService
     /// as used and refreshes the stored profile the same way. The caller must have verified the ID
     /// token already - this method trusts <paramref name="googleSubject"/> as given.
     /// </summary>
-    Task<Guid> CreateUserIfNotExistsByGoogleAsync(
+    Task<ServiceUser> CreateUserIfNotExistsByGoogleAsync(
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
@@ -162,7 +162,7 @@ public class UserIdentityService(
     IDateTimeProvider dateTimeProvider,
     IdentityMetrics metrics) : IUserIdentityService
 {
-    public async Task<Guid> CreateUserIfNotExistsAsync(
+    public async Task<ServiceUser> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
@@ -173,12 +173,12 @@ public class UserIdentityService(
 
         var userId = await GetOrCreateUserIdAsync(serviceId, telegramId, profile, cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
+        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
 
-        return userId;
+        return new ServiceUser(userId, storedSource);
     }
 
-    public async Task<Guid> CreateUserIfNotExistsByGoogleAsync(
+    public async Task<ServiceUser> CreateUserIfNotExistsByGoogleAsync(
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
@@ -194,9 +194,9 @@ public class UserIdentityService(
 
         var userId = await GetOrCreateUserIdByGoogleAsync(serviceId, googleSubject, profile, cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
+        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
 
-        return userId;
+        return new ServiceUser(userId, storedSource);
     }
 
     public async Task<LinkAccountResult> LinkTelegramAccountAsync(
@@ -599,38 +599,50 @@ public class UserIdentityService(
         account.FamilyName = profile.FamilyName;
     }
 
-    private async Task EnsureUserServiceRecordedAsync(
+    /// <returns>The source stored on the user's row for the service - this call's, or the one that created the row.</returns>
+    private async Task<string?> EnsureUserServiceRecordedAsync(
         Guid userId,
         ServiceId serviceId,
         string? source,
         CancellationToken cancellationToken)
     {
-        var alreadyRecorded = await context.UserServices
-            .AnyAsync(x => x.UserId == userId && x.ServiceId == serviceId, cancellationToken);
+        var existing = await context.UserServices
+            .Where(x => x.UserId == userId && x.ServiceId == serviceId)
+            .Select(x => new { x.Source })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (alreadyRecorded)
+        if (existing is not null)
         {
-            return;
+            return existing.Source;
         }
 
-        context.UserServices.Add(new UserServiceEntity
+        var row = new UserServiceEntity
         {
             UserId = userId,
             ServiceId = serviceId,
             FirstSeenAt = dateTimeProvider.UtcNow,
             // Only the first call from a service records where the user came from; later calls find the row above.
             Source = SignUpSource.Normalize(source),
-        });
+        };
+        context.UserServices.Add(row);
 
         try
         {
             await context.SaveChangesAsync(cancellationToken);
             metrics.RecordServiceUserAdded(serviceId);
+
+            return row.Source;
         }
         catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
-            // Lost a race with a concurrent call recording the same (UserId, ServiceId) pair -
-            // it's already recorded, which is all this method promises.
+            // Lost a race with a concurrent call recording the same (UserId, ServiceId) pair - it's already
+            // recorded, which is all this method promises; the winner's row has the source to return.
+            context.Entry(row).State = EntityState.Detached;
+
+            return await context.UserServices
+                .Where(x => x.UserId == userId && x.ServiceId == serviceId)
+                .Select(x => x.Source)
+                .FirstAsync(cancellationToken);
         }
     }
 
@@ -644,3 +656,9 @@ public class UserIdentityService(
         return exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
     }
 }
+
+/// <summary>
+/// The global user a create call resolved, and where they came to the calling service from as stored
+/// (<see cref="UserServiceEntity.Source"/>) - the callers' copy of it should be this value.
+/// </summary>
+public sealed record ServiceUser(Guid UserId, string? Source);

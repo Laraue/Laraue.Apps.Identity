@@ -118,8 +118,10 @@ needs it.
   `/start` parameter, a Mini App `start_param` - sent as `source` with `CreateUserIfNotExists`/
   `CreateUserIfNotExistsByGoogle` and stored only by the call that creates the row (a later call's source is
   ignored), so each service keeps its own first source for a user. `SignUpSource.Normalize` lower-cases it, drops
-  anything but `a-z 0-9 . - _` and cuts it to 64. Raw values, so no metric label: per-source numbers come from the
-  calling service (Boards' funnel by source keeps a copy of the same value).
+  anything but `a-z 0-9 . - _` and cuts it to 64 - the one place this rule lives. Both create calls return the stored
+  value (`CreateUserIfNotExistsResponse.source`: this call's, or the earlier call's that created the row), and a
+  caller keeping its own copy stores that instead of normalizing its own. Raw values, so no metric label: per-source
+  numbers come from the calling service (Boards' funnel by source keeps the copy).
 
 ## Project layout
 

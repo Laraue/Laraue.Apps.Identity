@@ -22,11 +22,11 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
         Internal.Contracts.CreateUserIfNotExistsRequest request,
         ServerCallContext context)
     {
-        Guid userId;
+        ServiceUser user;
 
         try
         {
-            userId = await userIdentityService.CreateUserIfNotExistsAsync(
+            user = await userIdentityService.CreateUserIfNotExistsAsync(
                 ReadDomainServiceId(context),
                 request.TelegramId,
                 ToTelegramProfile(request),
@@ -38,18 +38,18 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
             throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
 
-        return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
+        return ToResponse(user);
     }
 
     public override async Task<Internal.Contracts.CreateUserIfNotExistsResponse> CreateUserIfNotExistsByGoogle(
         Internal.Contracts.CreateUserIfNotExistsByGoogleRequest request,
         ServerCallContext context)
     {
-        Guid userId;
+        ServiceUser user;
 
         try
         {
-            userId = await userIdentityService.CreateUserIfNotExistsByGoogleAsync(
+            user = await userIdentityService.CreateUserIfNotExistsByGoogleAsync(
                 ReadDomainServiceId(context),
                 request.GoogleSubject,
                 ToGoogleProfile(request),
@@ -61,7 +61,18 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
             throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
 
-        return new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = userId.ToString() };
+        return ToResponse(user);
+    }
+
+    private static Internal.Contracts.CreateUserIfNotExistsResponse ToResponse(ServiceUser user)
+    {
+        var response = new Internal.Contracts.CreateUserIfNotExistsResponse { UserId = user.UserId.ToString() };
+        if (user.Source is not null)
+        {
+            response.Source = user.Source;
+        }
+
+        return response;
     }
 
     public override async Task<Internal.Contracts.LinkAccountResponse> LinkTelegramAccount(
