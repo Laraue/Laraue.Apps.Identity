@@ -218,6 +218,11 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("first_seen_at");
 
+                    b.Property<string>("Source")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source");
+
                     b.HasKey("UserId", "ServiceId")
                         .HasName("pk_user_services");
 

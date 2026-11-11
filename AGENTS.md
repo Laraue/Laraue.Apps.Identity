@@ -114,6 +114,12 @@ needs it.
   `UserId`/`ServiceId`, `FirstSeenAt`). One row per user per service no matter how many times
   `CreateUserIfNotExists` is called for that pair - this is the basis for "which services does this
   user already use" from the top-level vision for this app.
+  `Source` (BRD-295) is where the user came to that service from - a landing link's `ref`/`utm_source`, a bot
+  `/start` parameter, a Mini App `start_param` - sent as `source` with `CreateUserIfNotExists`/
+  `CreateUserIfNotExistsByGoogle` and stored only by the call that creates the row (a later call's source is
+  ignored), so each service keeps its own first source for a user. `SignUpSource.Normalize` lower-cases it, drops
+  anything but `a-z 0-9 . - _` and cuts it to 64. Raw values, so no metric label: per-source numbers come from the
+  calling service (Boards' funnel by source keeps a copy of the same value).
 
 ## Project layout
 
