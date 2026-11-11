@@ -17,4 +17,14 @@ public class UserService
     public Service? Service { get; set; }
 
     public DateTime FirstSeenAt { get; set; }
+
+    /// <summary>
+    /// Where the user came to this service from (BRD-295) - a landing link's ref/utm_source, a bot /start parameter,
+    /// a Mini App start_param - as the calling service sent it with the call that created this row. Never changed
+    /// afterwards; null when the caller didn't know it, and for rows from before BRD-295.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(SourceMaxLength)]
+    public string? Source { get; set; }
+
+    public const int SourceMaxLength = 64;
 }

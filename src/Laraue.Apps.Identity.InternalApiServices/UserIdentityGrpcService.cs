@@ -30,6 +30,7 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
                 ReadDomainServiceId(context),
                 request.TelegramId,
                 ToTelegramProfile(request),
+                request.HasSource ? request.Source : null,
                 context.CancellationToken);
         }
         catch (BadRequestException ex)
@@ -52,6 +53,7 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
                 ReadDomainServiceId(context),
                 request.GoogleSubject,
                 ToGoogleProfile(request),
+                request.HasSource ? request.Source : null,
                 context.CancellationToken);
         }
         catch (BadRequestException ex)

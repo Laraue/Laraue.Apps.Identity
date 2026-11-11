@@ -72,6 +72,12 @@ message CreateUserIfNotExistsRequest {
   optional string telegram_first_name = 4;
   optional string telegram_last_name = 5;
   optional string telegram_language_code = 6;
+
+  // Where the user came to the calling service from (a ref/utm_source of a landing link, a bot /start
+  // parameter, a Mini App start_param). Stored only when this call is the user's first from the calling
+  // service and kept from then on; ignored on later calls. Lower-cased, cut to 64 characters, anything
+  // but a-z 0-9 . - _ dropped.
+  optional string source = 7;
 }
 
 message CreateUserIfNotExistsResponse {
@@ -89,6 +95,9 @@ message CreateUserIfNotExistsByGoogleRequest {
   optional string name = 3;
   optional string given_name = 4;
   optional string family_name = 5;
+
+  // Where the user came to the calling service from - see CreateUserIfNotExistsRequest.source.
+  optional string source = 6;
 }
 
 message LinkTelegramAccountRequest {

@@ -87,11 +87,14 @@ public interface IUserIdentityService
     /// linking the Telegram account to it if none exists yet. Either way, records that
     /// <paramref name="serviceId"/> is used by the resolved user, and refreshes the stored Telegram
     /// profile fields from <paramref name="profile"/> (Telegram profiles can change between calls).
+    /// <paramref name="source"/> - where the user came to the service from - is kept only when this call records
+    /// the service for the user the first time (<see cref="SignUpSource"/>).
     /// </summary>
     Task<Guid> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
+        string? source,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -105,6 +108,7 @@ public interface IUserIdentityService
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
+        string? source,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -162,13 +166,14 @@ public class UserIdentityService(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
+        string? source,
         CancellationToken cancellationToken)
     {
         EnsureServiceIsKnown(serviceId);
 
         var userId = await GetOrCreateUserIdAsync(serviceId, telegramId, profile, cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
 
         return userId;
     }
@@ -177,6 +182,7 @@ public class UserIdentityService(
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
+        string? source,
         CancellationToken cancellationToken)
     {
         EnsureServiceIsKnown(serviceId);
@@ -188,7 +194,7 @@ public class UserIdentityService(
 
         var userId = await GetOrCreateUserIdByGoogleAsync(serviceId, googleSubject, profile, cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
 
         return userId;
     }
@@ -251,7 +257,7 @@ public class UserIdentityService(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, source: null, cancellationToken);
 
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
@@ -386,7 +392,7 @@ public class UserIdentityService(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, source: null, cancellationToken);
 
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
@@ -596,6 +602,7 @@ public class UserIdentityService(
     private async Task EnsureUserServiceRecordedAsync(
         Guid userId,
         ServiceId serviceId,
+        string? source,
         CancellationToken cancellationToken)
     {
         var alreadyRecorded = await context.UserServices
@@ -611,6 +618,8 @@ public class UserIdentityService(
             UserId = userId,
             ServiceId = serviceId,
             FirstSeenAt = dateTimeProvider.UtcNow,
+            // Only the first call from a service records where the user came from; later calls find the row above.
+            Source = SignUpSource.Normalize(source),
         });
 
         try
