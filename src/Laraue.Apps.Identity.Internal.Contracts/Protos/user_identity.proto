@@ -83,6 +83,11 @@ message CreateUserIfNotExistsRequest {
 message CreateUserIfNotExistsResponse {
   // The global Laraue user id (GUID, string form).
   string user_id = 1;
+
+  // Where the user came to the calling service from, as this service stored it (normalized) - from this call's
+  // `source` when it recorded the service for the user, or from the earlier call that did. Unset when unknown.
+  // Callers keeping their own copy store this value instead of normalizing theirs.
+  optional string source = 2;
 }
 
 message CreateUserIfNotExistsByGoogleRequest {

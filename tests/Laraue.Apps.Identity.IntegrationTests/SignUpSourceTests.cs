@@ -26,6 +26,7 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
         });
 
         Assert.Equal("producthunt", await GetSource(testScope, response.UserId, DomainServiceId.LaraueBoards));
+        Assert.Equal("producthunt", response.Source);
     }
 
     [Fact]
@@ -39,13 +40,15 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
             TelegramId = 7002,
             Source = "productradar",
         });
-        await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        var second = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
         {
             TelegramId = 7002,
             Source = "producthunt",
         });
 
         Assert.Equal("productradar", await GetSource(testScope, response.UserId, DomainServiceId.LaraueBoards));
+        // The caller gets the stored source back, not the one it just sent.
+        Assert.Equal("productradar", second.Source);
     }
 
     [Fact]
@@ -79,6 +82,7 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
         var response = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 7004 });
 
         Assert.Null(await GetSource(testScope, response.UserId, DomainServiceId.LaraueBoards));
+        Assert.False(response.HasSource);
     }
 
     [Fact]
@@ -94,6 +98,7 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
         });
 
         Assert.Equal("habr", await GetSource(testScope, response.UserId, DomainServiceId.LaraueBoards));
+        Assert.Equal("habr", response.Source);
     }
 
     [Theory]
