@@ -1,4 +1,4 @@
-using Laraue.Apps.Identity.Internal.Contracts;
+﻿using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
 using Laraue.Apps.Identity.InternalApiServices;
 using Microsoft.Extensions.DependencyInjection;
@@ -96,14 +96,66 @@ public class IdentityMetricsTests(InternalApiTestHost host) : IClassFixture<Inte
         Assert.Equal("1", GaugeValue(metrics, "identity_service_users", "service=\"LearnLanguage\""));
     }
 
+    [Fact]
+    public async Task StateMetrics_ShouldCountServiceUsersBySignUpSource_WhenRefreshed()
+    {
+        using var testScope = host.CreateTestScope();
+        var boards = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        await boards.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 9101, Source = "ProductHunt" });
+        await boards.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 9102, Source = "producthunt" });
+        await boards.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 9103, Source = "habr" });
+        await boards.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 9104 });
+
+        await host.Services.GetRequiredService<IdentityStateMetrics>().RefreshAsync(CancellationToken.None);
+        var metrics = await ScrapeAsync();
+
+        const string series = "identity_service_users_by_sign_up_source";
+        Assert.Equal("2", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"producthunt\""));
+        Assert.Equal("1", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"habr\""));
+        Assert.Equal("1", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"none\""));
+        Assert.Equal("0", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"other\""));
+        // A service without users still has its other and none series.
+        Assert.Equal("0", GaugeValue(metrics, series, "service=\"LearnLanguage\"", "source=\"none\""));
+        Assert.Equal("0", GaugeValue(metrics, series, "service=\"LearnLanguage\"", "source=\"other\""));
+    }
+
+    [Fact]
+    public async Task StateMetrics_ShouldReportRareSignUpSourcesAsOther_WhenServiceHasTooManySources()
+    {
+        using var testScope = host.CreateTestScope();
+        var boards = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        // Eleven sources: s00 has two users, s01..s10 one each - s01..s09 fit, s10 (last by name) is other.
+        await boards.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest { TelegramId = 9200, Source = "s00" });
+        for (var i = 0; i <= IdentityStateMetrics.MaxSignUpSourcesPerService; i++)
+        {
+            await boards.CreateUserIfNotExistsAsync(
+                new CreateUserIfNotExistsRequest { TelegramId = 9201 + i, Source = $"s{i:00}" });
+        }
+
+        await host.Services.GetRequiredService<IdentityStateMetrics>().RefreshAsync(CancellationToken.None);
+        var metrics = await ScrapeAsync();
+
+        const string series = "identity_service_users_by_sign_up_source";
+        var boardsLines = SeriesLines(metrics, series)
+            .Where(x => x.Contains("service=\"LaraueBoards\""))
+            .ToArray();
+        // The top sources, other and none.
+        Assert.Equal(IdentityStateMetrics.MaxSignUpSourcesPerService + 2, boardsLines.Length);
+        Assert.Equal("2", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"s00\""));
+        Assert.Equal("1", GaugeValue(metrics, series, "service=\"LaraueBoards\"", "source=\"other\""));
+        Assert.DoesNotContain(boardsLines, x => x.Contains("source=\"s10\""));
+    }
+
     private async Task<string> ScrapeAsync() => await host.CreateClient().GetStringAsync("/_metrics");
 
     private static IEnumerable<string> SeriesLines(string metrics, string series)
         => metrics.Split('\n').Where(line => line.StartsWith(series + "{"));
 
-    private static string GaugeValue(string metrics, string series, string? label = null)
+    private static string GaugeValue(string metrics, string series, params string[] labels)
     {
-        var line = SeriesLines(metrics, series).Single(x => label is null || x.Contains(label));
+        var line = SeriesLines(metrics, series).Single(x => labels.All(x.Contains));
 
         return line[(line.LastIndexOf(' ') + 1)..];
     }
