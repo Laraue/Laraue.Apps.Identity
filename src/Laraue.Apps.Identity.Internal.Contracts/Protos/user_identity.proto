@@ -73,11 +73,16 @@ message CreateUserIfNotExistsRequest {
   optional string telegram_last_name = 5;
   optional string telegram_language_code = 6;
 
-  // Where the user came to the calling service from (a ref/utm_source of a landing link, a bot /start
-  // parameter, a Mini App start_param). Stored only when this call is the user's first from the calling
-  // service and kept from then on; ignored on later calls. Lower-cased, cut to 64 characters, anything
-  // but a-z 0-9 . - _ dropped.
+  // Where the user came to the calling service from - what the caller saw, raw; this service works out the source
+  // (see landing_url/referrer below). Used only when this call is the user's first from the calling service.
+  // `source`: the caller's own explicit source (a bot /start parameter, a Mini App start_param, a caller rule
+  // such as an invite link) - it wins over the rest.
   optional string source = 7;
+  // The first page the user opened on the caller's site (full URL): its `ref`, else `utm_source`, is the source.
+  optional string landing_url = 8;
+  // The site that sent the user to that page (document.referrer): a known site by its short name, any other by
+  // its host, when there's no source above. Only its host is stored.
+  optional string referrer = 9;
 }
 
 message CreateUserIfNotExistsResponse {
@@ -101,8 +106,10 @@ message CreateUserIfNotExistsByGoogleRequest {
   optional string given_name = 4;
   optional string family_name = 5;
 
-  // Where the user came to the calling service from - see CreateUserIfNotExistsRequest.source.
+  // Where the user came to the calling service from - see CreateUserIfNotExistsRequest.source/landing_url/referrer.
   optional string source = 6;
+  optional string landing_url = 7;
+  optional string referrer = 8;
 }
 
 message LinkTelegramAccountRequest {

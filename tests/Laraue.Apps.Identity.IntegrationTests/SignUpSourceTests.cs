@@ -119,6 +119,58 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
         Assert.Equal(new string('a', SignUpSource.MaxLength), SignUpSource.Normalize(new string('a', 100)));
     }
 
+    [Fact]
+    public async Task CreateUserIfNotExists_ShouldTakeSourceFromLandingLinkAndKeepReferrerHost_WhenCallerSendsRawData()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+
+        var response = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 7005,
+            LandingUrl = "https://boards.laraue.com/ru?ref=ProductHunt&utm_source=newsletter",
+            Referrer = "https://www.google.com/search?q=boards",
+        });
+
+        Assert.Equal("producthunt", response.Source);
+        var row = await testScope.Database.UserServices
+            .SingleAsync(x => x.UserId == Guid.Parse(response.UserId));
+        Assert.Equal("producthunt", row.Source);
+        Assert.Equal("www.google.com", row.ReferrerHost);
+    }
+
+    [Theory]
+    [InlineData("invite", "https://boards.laraue.com/join/x?ref=habr", null, "invite")]
+    [InlineData(null, "https://boards.laraue.com/?ref=habr&utm_source=newsletter", null, "habr")]
+    [InlineData(null, "https://boards.laraue.com/?utm_source=Newsletter", null, "newsletter")]
+    [InlineData(null, "https://boards.laraue.com/", "https://www.producthunt.com/posts/boards", "producthunt")]
+    [InlineData(null, "https://boards.laraue.com/", "https://t.me/", "telegram")]
+    [InlineData(null, "https://boards.laraue.com/", "https://www.google.de/", "google")]
+    [InlineData(null, "https://boards.laraue.com/", "https://yandex.ru/search", "yandex")]
+    [InlineData(null, "https://boards.laraue.com/", "https://blog.example.com/post?id=1", "blog.example.com")]
+    [InlineData(null, "https://boards.laraue.com/login", "https://boards.laraue.com/", null)]
+    [InlineData(null, "https://boards.laraue.com/", null, null)]
+    [InlineData(null, "not a url", "also not a url", null)]
+    public void Resolve_ShouldPickSourceByPrecedence_WhenCallerSendsWhatItSaw(
+        string? source,
+        string? landingUrl,
+        string? referrer,
+        string? expected)
+    {
+        Assert.Equal(expected, SignUpSource.Resolve(new SignUpAttribution(source, landingUrl, referrer)).Source);
+    }
+
+    [Fact]
+    public void Resolve_ShouldKeepNoReferrerHost_WhenReferrerIsTheSameSite()
+    {
+        var resolved = SignUpSource.Resolve(new SignUpAttribution(
+            null,
+            "https://boards.laraue.com/login",
+            "https://boards.laraue.com/ru"));
+
+        Assert.Null(resolved.ReferrerHost);
+    }
+
     private static Task<string?> GetSource(InternalApiTestHostScope testScope, string userId, DomainServiceId serviceId)
     {
         return testScope.Database.UserServices

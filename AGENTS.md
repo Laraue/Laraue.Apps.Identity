@@ -115,10 +115,13 @@ needs it.
   `CreateUserIfNotExists` is called for that pair - this is the basis for "which services does this
   user already use" from the top-level vision for this app.
   `Source` (BRD-295) is where the user came to that service from - a landing link's `ref`/`utm_source`, a bot
-  `/start` parameter, a Mini App `start_param` - sent as `source` with `CreateUserIfNotExists`/
-  `CreateUserIfNotExistsByGoogle` and stored only by the call that creates the row (a later call's source is
-  ignored), so each service keeps its own first source for a user. `SignUpSource.Normalize` lower-cases it, drops
-  anything but `a-z 0-9 . - _` and cuts it to 64 - the one place this rule lives. Both create calls return the stored
+  `/start` parameter, a Mini App `start_param` - and is stored only by the call that creates the row (a later
+  call's is ignored), so each service keeps its own first source for a user. Callers send what they saw, raw:
+  `source` (their own explicit one, e.g. a bot parameter or Boards' invite rule), `landing_url` (the first page the
+  user opened) and `referrer`. `SignUpSource.Resolve` - the one place these rules live - picks the explicit source,
+  else the landing link's `ref`, else its `utm_source`, else the referring site (known ones by short name, search
+  engines by name, any other by host; the same site counts as none), then normalizes it (lower-case, `a-z 0-9 . - _`,
+  64). `ReferrerHost` keeps the referring site's host (never the URL) next to it, to see what's behind a source. Both create calls return the stored
   value (`CreateUserIfNotExistsResponse.source`: this call's, or the earlier call's that created the row), and a
   caller keeping its own copy stores that instead of normalizing its own. Raw values, so no metric label: per-source
   numbers come from the calling service (Boards' funnel by source keeps the copy).
