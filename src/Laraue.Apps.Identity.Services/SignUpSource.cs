@@ -6,38 +6,19 @@ namespace Laraue.Apps.Identity.Services;
 /// Where a user came to a service from (BRD-295). Callers pass what they saw, raw (<see cref="SignUpAttribution"/>), and
 /// this is the one place that turns it into a source: the caller's explicit source (a bot <c>/start</c> parameter, a
 /// Mini App <c>start_param</c>, a caller-specific rule such as Boards' invite links), else the landing link's
-/// <c>ref</c>, else its <c>utm_source</c>, else the referring site - a known one by its short name, any other by its
-/// host. Then normalized, so whatever reaches the database is short and plain.
+/// <c>ref</c>, else its <c>utm_source</c>, else the referring site - a known one by its short name, a search engine by
+/// its name (both from <see cref="SignUpSourceOptions"/>), any other by its host. Then normalized, so whatever reaches
+/// the database is short and plain.
 /// </summary>
 public static class SignUpSource
 {
     public const int MaxLength = 64;
 
     /// <summary>
-    /// Referring sites with a short name of their own; any other site's source is its host.
-    /// </summary>
-    private static readonly (string Domain, string Source)[] KnownReferrers =
-    [
-        ("producthunt.com", "producthunt"),
-        ("productradar.ru", "productradar"),
-        ("t.me", "telegram"),
-        ("telegram.me", "telegram"),
-        ("telegram.org", "telegram"),
-        ("habr.com", "habr"),
-        ("spark.ru", "spark"),
-        ("vc.ru", "vc"),
-    ];
-
-    /// <summary>
-    /// Search engines, matched by their second-level name on any country domain (google.de, yandex.ru).
-    /// </summary>
-    private static readonly string[] KnownSearchEngines = ["google", "yandex", "bing", "duckduckgo"];
-
-    /// <summary>
     /// The source and the referring site's host for what a caller saw. Both null when nothing tells where the user
     /// came from.
     /// </summary>
-    public static ResolvedSignUpSource Resolve(SignUpAttribution attribution)
+    public static ResolvedSignUpSource Resolve(SignUpAttribution attribution, SignUpSourceOptions options)
     {
         var landing = TryParseUrl(attribution.LandingUrl);
         var referrerHost = TryParseUrl(attribution.Referrer)?.Host.ToLowerInvariant();
@@ -53,28 +34,30 @@ public static class SignUpSource
             : FirstNonEmpty(QueryValue(landing, "ref"), QueryValue(landing, "utm_source"));
 
         var source = FirstNonEmpty(attribution.Source, fromLink)
-            ?? (referrerHost is null ? null : SourceOfHost(referrerHost));
+            ?? (referrerHost is null ? null : SourceOfHost(referrerHost, options));
 
         return new ResolvedSignUpSource(Normalize(source), referrerHost);
     }
 
-    private static string SourceOfHost(string host)
+    private static string SourceOfHost(string host, SignUpSourceOptions options)
     {
-        foreach (var (domain, source) in KnownReferrers)
+        foreach (var referrer in options.Referrers)
         {
-            if (host == domain || host.EndsWith("." + domain, StringComparison.Ordinal))
+            var domain = referrer.Domain.Trim().ToLowerInvariant();
+            if (domain.Length > 0 && (host == domain || host.EndsWith("." + domain, StringComparison.Ordinal)))
             {
-                return source;
+                return referrer.Source;
             }
         }
 
-        // google.com, www.google.de, yandex.ru: the label before the country/top-level part.
+        // google.com, www.google.de, yandex.ru: any label but the last (the country/top-level part).
         var labels = host.Split('.');
-        foreach (var engine in KnownSearchEngines)
+        foreach (var engine in options.SearchEngines)
         {
-            if (labels.Length >= 2 && labels[..^1].Contains(engine))
+            var name = engine.Trim().ToLowerInvariant();
+            if (labels.Length >= 2 && labels[..^1].Contains(name))
             {
-                return engine;
+                return name;
             }
         }
 
@@ -149,3 +132,29 @@ public sealed record SignUpAttribution(string? Source, string? LandingUrl, strin
 /// <param name="ReferrerHost">The referring site's host (not its URL, which can carry personal details); null when
 /// there was none or it was the same site.</param>
 public sealed record ResolvedSignUpSource(string? Source, string? ReferrerHost);
+
+/// <summary>
+/// The referring sites and search engines <see cref="SignUpSource.Resolve"/> knows (section <c>SignUpSources</c> of
+/// InternalApiHost's <c>appsettings.json</c>), so a new launch site needs no code change.
+/// </summary>
+public sealed class SignUpSourceOptions
+{
+    /// <summary>
+    /// Sites with a short name of their own: a referrer on <see cref="SignUpReferrer.Domain"/> or any of its
+    /// subdomains becomes <see cref="SignUpReferrer.Source"/>.
+    /// </summary>
+    public SignUpReferrer[] Referrers { get; set; } = [];
+
+    /// <summary>
+    /// Search engines by name, matched on any of their country domains (google.de, www.google.com, yandex.ru); the
+    /// source is the name.
+    /// </summary>
+    public string[] SearchEngines { get; set; } = [];
+}
+
+public sealed class SignUpReferrer
+{
+    public string Domain { get; set; } = string.Empty;
+
+    public string Source { get; set; } = string.Empty;
+}

@@ -2,6 +2,8 @@ using Laraue.Apps.Identity.Internal.Contracts;
 using Laraue.Apps.Identity.IntegrationTests.Infrastructure;
 using Laraue.Apps.Identity.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using DomainServiceId = Laraue.Apps.Identity.DataAccess.Entities.ServiceId;
 
 namespace Laraue.Apps.Identity.IntegrationTests;
@@ -157,19 +159,23 @@ public class SignUpSourceTests(InternalApiTestHost host) : IClassFixture<Interna
         string? referrer,
         string? expected)
     {
-        Assert.Equal(expected, SignUpSource.Resolve(new SignUpAttribution(source, landingUrl, referrer)).Source);
+        Assert.Equal(expected, SignUpSource.Resolve(new SignUpAttribution(source, landingUrl, referrer), Options).Source);
     }
 
     [Fact]
     public void Resolve_ShouldKeepNoReferrerHost_WhenReferrerIsTheSameSite()
     {
-        var resolved = SignUpSource.Resolve(new SignUpAttribution(
-            null,
-            "https://boards.laraue.com/login",
-            "https://boards.laraue.com/ru"));
+        var resolved = SignUpSource.Resolve(
+            new SignUpAttribution(null, "https://boards.laraue.com/login", "https://boards.laraue.com/ru"),
+            Options);
 
         Assert.Null(resolved.ReferrerHost);
     }
+
+    /// <summary>
+    /// The lists the host loaded from its appsettings.json - so these tests check that configuration too.
+    /// </summary>
+    private SignUpSourceOptions Options => host.Services.GetRequiredService<IOptions<SignUpSourceOptions>>().Value;
 
     private static Task<string?> GetSource(InternalApiTestHostScope testScope, string userId, DomainServiceId serviceId)
     {

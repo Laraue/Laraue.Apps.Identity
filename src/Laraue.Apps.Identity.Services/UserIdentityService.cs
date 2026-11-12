@@ -5,6 +5,7 @@ using Laraue.Apps.Identity.Services.Resources;
 using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.Exceptions.Web;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 // UserIdentityService.cs (this business-logic class) shares its name with the DataAccess entity
 // UserService (user-uses-service link) - alias the entity to keep both unambiguous.
@@ -160,7 +161,8 @@ public interface IUserIdentityService
 public class UserIdentityService(
     DatabaseContext context,
     IDateTimeProvider dateTimeProvider,
-    IdentityMetrics metrics) : IUserIdentityService
+    IdentityMetrics metrics,
+    IOptions<SignUpSourceOptions> signUpSourceOptions) : IUserIdentityService
 {
     public async Task<ServiceUser> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
@@ -616,7 +618,7 @@ public class UserIdentityService(
             return existing.Source;
         }
 
-        var resolved = SignUpSource.Resolve(signUp);
+        var resolved = SignUpSource.Resolve(signUp, signUpSourceOptions.Value);
         var row = new UserServiceEntity
         {
             UserId = userId,
