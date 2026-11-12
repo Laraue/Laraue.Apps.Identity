@@ -218,6 +218,11 @@ namespace Laraue.Apps.Identity.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("first_seen_at");
 
+                    b.Property<string>("ReferrerHost")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("referrer_host");
+
                     b.Property<string>("Source")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")

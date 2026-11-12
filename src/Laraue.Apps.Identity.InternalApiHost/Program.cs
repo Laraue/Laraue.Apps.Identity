@@ -32,7 +32,7 @@ public sealed class Program
             .UseNpgsql(connection)
             .UseSnakeCaseNamingConvention());
 
-        builder.Services.AddInternalApiServices();
+        builder.Services.AddInternalApiServices(builder.Configuration);
 
         builder.Services
             .AddGrpc()

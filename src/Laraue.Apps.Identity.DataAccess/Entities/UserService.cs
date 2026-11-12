@@ -27,4 +27,14 @@ public class UserService
     public string? Source { get; set; }
 
     public const int SourceMaxLength = 64;
+
+    /// <summary>
+    /// The host of the site that sent the user to this service's landing page (BRD-295), from the same call as
+    /// <see cref="Source"/> - kept even when the source came from a link's ref, so what's behind a source can be
+    /// checked. The host only, never the referring URL. Null when there was none.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(ReferrerHostMaxLength)]
+    public string? ReferrerHost { get; set; }
+
+    public const int ReferrerHostMaxLength = 255;
 }

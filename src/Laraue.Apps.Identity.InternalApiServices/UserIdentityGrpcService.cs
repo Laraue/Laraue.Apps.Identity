@@ -30,7 +30,10 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
                 ReadDomainServiceId(context),
                 request.TelegramId,
                 ToTelegramProfile(request),
-                request.HasSource ? request.Source : null,
+                new SignUpAttribution(
+                    request.HasSource ? request.Source : null,
+                    request.HasLandingUrl ? request.LandingUrl : null,
+                    request.HasReferrer ? request.Referrer : null),
                 context.CancellationToken);
         }
         catch (BadRequestException ex)
@@ -53,7 +56,10 @@ public sealed class UserIdentityGrpcService(IUserIdentityService userIdentitySer
                 ReadDomainServiceId(context),
                 request.GoogleSubject,
                 ToGoogleProfile(request),
-                request.HasSource ? request.Source : null,
+                new SignUpAttribution(
+                    request.HasSource ? request.Source : null,
+                    request.HasLandingUrl ? request.LandingUrl : null,
+                    request.HasReferrer ? request.Referrer : null),
                 context.CancellationToken);
         }
         catch (BadRequestException ex)

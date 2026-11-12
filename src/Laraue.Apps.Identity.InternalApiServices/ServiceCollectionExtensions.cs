@@ -2,6 +2,7 @@ using Laraue.Apps.Identity.Services;
 using Laraue.Apps.Identity.Services.Metrics;
 using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.DateTime.Services.Impl;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Laraue.Apps.Identity.InternalApiServices;
@@ -10,8 +11,11 @@ public static class ServiceCollectionExtensions
 {
     extension(IServiceCollection services)
     {
-        public IServiceCollection AddInternalApiServices()
+        public IServiceCollection AddInternalApiServices(IConfiguration configuration)
         {
+            // The referring sites and search engines that get a short source name (BRD-295).
+            services.Configure<SignUpSourceOptions>(configuration.GetSection("SignUpSources"));
+
             services
                 .AddSingleton<IDateTimeProvider, DateTimeProvider>()
                 .AddScoped<IUserIdentityService, UserIdentityService>();

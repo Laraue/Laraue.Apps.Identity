@@ -5,6 +5,7 @@ using Laraue.Apps.Identity.Services.Resources;
 using Laraue.Core.DateTime.Services.Abstractions;
 using Laraue.Core.Exceptions.Web;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 // UserIdentityService.cs (this business-logic class) shares its name with the DataAccess entity
 // UserService (user-uses-service link) - alias the entity to keep both unambiguous.
@@ -87,14 +88,14 @@ public interface IUserIdentityService
     /// linking the Telegram account to it if none exists yet. Either way, records that
     /// <paramref name="serviceId"/> is used by the resolved user, and refreshes the stored Telegram
     /// profile fields from <paramref name="profile"/> (Telegram profiles can change between calls).
-    /// <paramref name="source"/> - where the user came to the service from - is kept only when this call records
-    /// the service for the user the first time (<see cref="SignUpSource"/>).
+    /// <paramref name="signUp"/> - what the caller saw about where the user came from - is resolved into a source
+    /// (<see cref="SignUpSource.Resolve"/>) and kept only when this call records the service for the user the first time.
     /// </summary>
     Task<ServiceUser> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
-        string? source,
+        SignUpAttribution signUp,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -108,7 +109,7 @@ public interface IUserIdentityService
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
-        string? source,
+        SignUpAttribution signUp,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -160,20 +161,21 @@ public interface IUserIdentityService
 public class UserIdentityService(
     DatabaseContext context,
     IDateTimeProvider dateTimeProvider,
-    IdentityMetrics metrics) : IUserIdentityService
+    IdentityMetrics metrics,
+    IOptions<SignUpSourceOptions> signUpSourceOptions) : IUserIdentityService
 {
     public async Task<ServiceUser> CreateUserIfNotExistsAsync(
         ServiceId serviceId,
         long telegramId,
         TelegramProfile profile,
-        string? source,
+        SignUpAttribution signUp,
         CancellationToken cancellationToken)
     {
         EnsureServiceIsKnown(serviceId);
 
         var userId = await GetOrCreateUserIdAsync(serviceId, telegramId, profile, cancellationToken);
 
-        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
+        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, signUp, cancellationToken);
 
         return new ServiceUser(userId, storedSource);
     }
@@ -182,7 +184,7 @@ public class UserIdentityService(
         ServiceId serviceId,
         string googleSubject,
         GoogleProfile profile,
-        string? source,
+        SignUpAttribution signUp,
         CancellationToken cancellationToken)
     {
         EnsureServiceIsKnown(serviceId);
@@ -194,7 +196,7 @@ public class UserIdentityService(
 
         var userId = await GetOrCreateUserIdByGoogleAsync(serviceId, googleSubject, profile, cancellationToken);
 
-        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, source, cancellationToken);
+        var storedSource = await EnsureUserServiceRecordedAsync(userId, serviceId, signUp, cancellationToken);
 
         return new ServiceUser(userId, storedSource);
     }
@@ -257,7 +259,7 @@ public class UserIdentityService(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, source: null, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, SignUpAttribution.None, cancellationToken);
 
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
@@ -392,7 +394,7 @@ public class UserIdentityService(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        await EnsureUserServiceRecordedAsync(userId, serviceId, source: null, cancellationToken);
+        await EnsureUserServiceRecordedAsync(userId, serviceId, SignUpAttribution.None, cancellationToken);
 
         return previousUserId is null
             ? new LinkAccountResult(LinkAccountOutcome.Linked)
@@ -603,7 +605,7 @@ public class UserIdentityService(
     private async Task<string?> EnsureUserServiceRecordedAsync(
         Guid userId,
         ServiceId serviceId,
-        string? source,
+        SignUpAttribution signUp,
         CancellationToken cancellationToken)
     {
         var existing = await context.UserServices
@@ -616,13 +618,17 @@ public class UserIdentityService(
             return existing.Source;
         }
 
+        var resolved = SignUpSource.Resolve(signUp, signUpSourceOptions.Value);
         var row = new UserServiceEntity
         {
             UserId = userId,
             ServiceId = serviceId,
             FirstSeenAt = dateTimeProvider.UtcNow,
             // Only the first call from a service records where the user came from; later calls find the row above.
-            Source = SignUpSource.Normalize(source),
+            Source = resolved.Source,
+            ReferrerHost = resolved.ReferrerHost is { Length: > UserServiceEntity.ReferrerHostMaxLength } host
+                ? host[..UserServiceEntity.ReferrerHostMaxLength]
+                : resolved.ReferrerHost,
         };
         context.UserServices.Add(row);
 
