@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 Guidance for AI agents working in this repo. Human-readable conventions and gotchas that aren't
 obvious from the code alone.
@@ -124,8 +124,9 @@ needs it.
   new launch site is a config change; any other site by host; the same site counts as none), then normalizes it (lower-case, `a-z 0-9 . - _`,
   64). `ReferrerHost` keeps the referring site's host (never the URL) next to it, to see what's behind a source. Both create calls return the stored
   value (`CreateUserIfNotExistsResponse.source`: this call's, or the earlier call's that created the row), and a
-  caller keeping its own copy stores that instead of normalizing its own. Raw values, so no metric label: per-source
-  numbers come from the calling service (Boards' funnel by source keeps the copy).
+  caller keeping its own copy stores that instead of normalizing its own. Sign-ups per source and service are
+  `identity_service_users_by_sign_up_source` (see "Metrics"); a funnel by source needs the service's own data, so a
+  service keeps its copy for that (Boards' `boards_funnel_users_by_source`).
 
 ## Project layout
 
@@ -200,8 +201,11 @@ Prometheus metrics on `InternalApiHost`'s `/_metrics` (health port), `System.Dia
   `identity_accounts_linked_total{provider,outcome}`.
 - **Gauges are state**, read from the database so they survive a restart (`IdentityStateMetrics` in
   `InternalApiServices`, refreshed every 30 s): `identity_users` (total, absorbed users excluded),
-  `identity_users_by_source{source}` (telegram only | google only | both), `identity_service_users{service}` (a user of
-  several services counts in each). Plot them over time for growth; with replicas use `max()`.
+  `identity_users_by_source{source}` (telegram only | google only | both - the accounts, not the sign-up source),
+  `identity_service_users{service}` (a user of several services counts in each),
+  `identity_service_users_by_sign_up_source{service, source}` (`UserService.Source`: each service's
+  `MaxSignUpSourcesPerService` most common sources, `other` for the rest, `none` without one - sources are free values,
+  so the label is capped per service rather than listed). Plot them over time for growth; with replicas use `max()`.
 - **Labels are low-cardinality**: method, provider, service, source, outcome. Never a user or account id.
 - **Tests** scrape `/_metrics` (`IdentityMetricsTests`); the test host turns the exporter's scrape cache off.
 

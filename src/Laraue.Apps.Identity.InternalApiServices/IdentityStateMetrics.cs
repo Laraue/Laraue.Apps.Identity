@@ -1,4 +1,4 @@
-using System.Diagnostics.Metrics;
+﻿using System.Diagnostics.Metrics;
 using Laraue.Apps.Identity.DataAccess;
 using Laraue.Apps.Identity.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +21,15 @@ public sealed class IdentityStateMetrics : BackgroundService
     public const string SourceTelegram = "telegram";
     public const string SourceGoogle = "google";
     public const string SourceBoth = "both";
+
+    /// <summary>
+    /// A service's most common sign-up sources get their own label value, the rest are <see cref="SignUpSourceOther"/>:
+    /// sources are free values from links, so they can't all be labels.
+    /// </summary>
+    public const int MaxSignUpSourcesPerService = 10;
+
+    public const string SignUpSourceOther = "other";
+    public const string SignUpSourceNone = "none";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<IdentityStateMetrics> _logger;
@@ -55,6 +64,16 @@ public sealed class IdentityStateMetrics : BackgroundService
                 x.Value,
                 new KeyValuePair<string, object?>("service", x.Key.ToString()))),
             description: "Users that use each service. A user of several services is counted in each.");
+
+        meter.CreateObservableGauge(
+            "identity.service.users.by_sign_up_source",
+            () => _snapshot.UsersBySignUpSource.Select(x => new Measurement<long>(
+                x.Count,
+                new KeyValuePair<string, object?>("service", x.ServiceId.ToString()),
+                new KeyValuePair<string, object?>("source", x.Source))),
+            description: "Users of each service by where they came to it from (UserService.Source, BRD-295): the " +
+                $"service's {MaxSignUpSourcesPerService} most common sources, {SignUpSourceOther} for the rest, " +
+                $"{SignUpSourceNone} without one (all users from before BRD-295).");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -97,6 +116,12 @@ public sealed class IdentityStateMetrics : BackgroundService
             .Select(x => new { ServiceId = x.Key, Count = x.LongCount() })
             .ToListAsync(cancellationToken);
 
+        var bySignUpSource = await context.UserServices
+            .Where(x => x.User!.MergedIntoUserId == null)
+            .GroupBy(x => new { x.ServiceId, x.Source })
+            .Select(x => new SignUpSourceCount(x.Key.ServiceId, x.Key.Source ?? SignUpSourceNone, x.LongCount()))
+            .ToListAsync(cancellationToken);
+
         _snapshot = new Snapshot(
             total,
             new Dictionary<string, long>
@@ -105,14 +130,58 @@ public sealed class IdentityStateMetrics : BackgroundService
                 [SourceGoogle] = googleOnly,
                 [SourceBoth] = both,
             },
-            byService.ToDictionary(x => x.ServiceId, x => x.Count));
+            byService.ToDictionary(x => x.ServiceId, x => x.Count),
+            GroupSignUpSources(bySignUpSource));
     }
+
+    /// <summary>
+    /// Keeps each service's <see cref="MaxSignUpSourcesPerService"/> most common sources and adds the rest up as
+    /// <see cref="SignUpSourceOther"/>. Every service always has <see cref="SignUpSourceOther"/> and
+    /// <see cref="SignUpSourceNone"/>, zero or not, so the series exist from the first scrape.
+    /// </summary>
+    private static SignUpSourceCount[] GroupSignUpSources(IEnumerable<SignUpSourceCount> counts)
+    {
+        var byService = counts.ToLookup(x => x.ServiceId);
+
+        return Enum.GetValues<ServiceId>()
+            .SelectMany(serviceId =>
+            {
+                var sources = byService[serviceId]
+                    .Where(x => x.Source != SignUpSourceNone)
+                    .OrderByDescending(x => x.Count)
+                    .ThenBy(x => x.Source, StringComparer.Ordinal)
+                    .ToArray();
+
+                return sources
+                    .Take(MaxSignUpSourcesPerService)
+                    .Append(new SignUpSourceCount(
+                        serviceId,
+                        SignUpSourceOther,
+                        sources
+                            .Skip(MaxSignUpSourcesPerService)
+                            .Sum(x => x.Count)))
+                    .Append(new SignUpSourceCount(
+                        serviceId,
+                        SignUpSourceNone,
+                        byService[serviceId]
+                            .Where(x => x.Source == SignUpSourceNone)
+                            .Sum(x => x.Count)));
+            })
+            .ToArray();
+    }
+
+    private sealed record SignUpSourceCount(ServiceId ServiceId, string Source, long Count);
 
     private sealed record Snapshot(
         long Users,
         IReadOnlyDictionary<string, long> UsersBySource,
-        IReadOnlyDictionary<ServiceId, long> UsersByService)
+        IReadOnlyDictionary<ServiceId, long> UsersByService,
+        IReadOnlyList<SignUpSourceCount> UsersBySignUpSource)
     {
-        public static readonly Snapshot Empty = new(0, new Dictionary<string, long>(), new Dictionary<ServiceId, long>());
+        public static readonly Snapshot Empty = new(
+            0,
+            new Dictionary<string, long>(),
+            new Dictionary<ServiceId, long>(),
+            []);
     }
 }
