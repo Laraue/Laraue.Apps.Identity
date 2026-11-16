@@ -110,6 +110,41 @@ public class UserProfileTests(InternalApiTestHost host) : IClassFixture<Internal
     }
 
     [Fact]
+    public async Task CreateUserIfNotExists_ShouldSaveUser_WhenTelegramNamesStartWithEmoji()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var created = await client.CreateUserIfNotExistsAsync(new CreateUserIfNotExistsRequest
+        {
+            TelegramId = 290,
+            TelegramFirstName = "😀 Ada",
+            TelegramLastName = "🚀",
+        });
+
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = created.UserId });
+
+        Assert.Equal("😀 Ada 🚀", profile.DisplayName);
+        Assert.Equal("😀🚀", profile.Initials);
+    }
+
+    [Fact]
+    public async Task GetUserProfile_ShouldNotSplitEmoji_WhenGoogleNameIsCutAtMaxLength()
+    {
+        using var testScope = host.CreateTestScope();
+        var client = host.CreateUserIdentityClient(ServiceId.LaraueBoards);
+        var userId = await CreateGoogleUserAsync(client, new CreateUserIfNotExistsByGoogleRequest
+        {
+            GoogleSubject = "google-291",
+            // The emoji's two chars sit at indexes 127 and 128, across the cut.
+            GivenName = new string('a', 127) + "😀" + "bbb",
+        });
+
+        var profile = await client.GetUserProfileAsync(new GetUserProfileRequest { UserId = userId });
+
+        Assert.Equal(new string('a', 127), profile.GivenName);
+    }
+
+    [Fact]
     public async Task GetUserProfile_ShouldKeepFirstAccountNames_WhenAnotherAccountIsLinked()
     {
         using var testScope = host.CreateTestScope();
