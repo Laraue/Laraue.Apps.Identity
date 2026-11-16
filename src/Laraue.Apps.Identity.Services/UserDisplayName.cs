@@ -5,17 +5,22 @@ namespace Laraue.Apps.Identity.Services;
 /// <see cref="DataAccess.Entities.User.UserName"/>) - the user name if there is one, otherwise
 /// "Given Family", otherwise whichever of the two is set, otherwise "Unknown".
 /// </summary>
+/// <remarks>
+/// Initials are taken by code point (<see cref="System.Text.Rune"/>), not by <c>char</c>: an emoji is two
+/// UTF-16 chars, and taking only the first left a lone surrogate the database couldn't store (MIN-57).
+/// Postgres counts <c>varchar</c> length in code points, so two emoji still fit <c>Initials</c>.
+/// </remarks>
 public sealed record UserDisplayName(string DisplayName, string Initials)
 {
     public static UserDisplayName From(string? userName, string? givenName, string? familyName)
     {
         var (displayName, initials) = (userName, givenName, familyName) switch
         {
-            _ when !string.IsNullOrWhiteSpace(userName) => (userName, FirstLetters(userName)),
+            _ when !string.IsNullOrWhiteSpace(userName) => (userName, FirstLetters(userName, 2)),
             _ when !string.IsNullOrWhiteSpace(givenName) && !string.IsNullOrWhiteSpace(familyName)
-                => ($"{givenName} {familyName}", $"{givenName[0]}{familyName[0]}"),
-            _ when !string.IsNullOrWhiteSpace(givenName) => (givenName, FirstLetters(givenName)),
-            _ when !string.IsNullOrWhiteSpace(familyName) => (familyName, FirstLetters(familyName)),
+                => ($"{givenName} {familyName}", FirstLetters(givenName, 1) + FirstLetters(familyName, 1)),
+            _ when !string.IsNullOrWhiteSpace(givenName) => (givenName, FirstLetters(givenName, 2)),
+            _ when !string.IsNullOrWhiteSpace(familyName) => (familyName, FirstLetters(familyName, 2)),
             _ => ("Unknown", "UN"),
         };
 
@@ -29,10 +34,15 @@ public sealed record UserDisplayName(string DisplayName, string Initials)
     public static string InitialsOf(string displayName)
     {
         var words = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var initials = words.Length > 1 ? $"{words[0][0]}{words[1][0]}" : FirstLetters(words[0]);
+        var initials = words.Length > 1
+            ? FirstLetters(words[0], 1) + FirstLetters(words[1], 1)
+            : FirstLetters(words[0], 2);
 
         return initials.ToUpperInvariant();
     }
 
-    private static string FirstLetters(string name) => name.Length > 1 ? name[..2] : name;
+    private static string FirstLetters(string name, int count)
+    {
+        return string.Concat(name.EnumerateRunes().Take(count));
+    }
 }

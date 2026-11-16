@@ -525,7 +525,17 @@ public class UserIdentityService(
 
     private static string? TruncateName(string? name)
     {
-        return name?.Length > User.NameMaxLength ? name[..User.NameMaxLength] : name;
+        if (name is null || name.Length <= User.NameMaxLength)
+        {
+            return name;
+        }
+
+        // Don't cut an emoji (a surrogate pair) in half - a lone surrogate can't be stored (MIN-57).
+        var length = char.IsHighSurrogate(name[User.NameMaxLength - 1])
+            ? User.NameMaxLength - 1
+            : User.NameMaxLength;
+
+        return name[..length];
     }
 
     private static void ApplyProfile(TelegramAccount account, TelegramProfile profile)
